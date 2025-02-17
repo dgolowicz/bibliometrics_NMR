@@ -26,6 +26,9 @@ def get_pubs_per_year():
 # Initialize Dash App
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
+# server instance (for Gunicorn)
+server = app.server  
+
 app.layout = dbc.Container([
     dbc.Row([
         dbc.Col([
