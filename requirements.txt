@@ -4,5 +4,4 @@ dash-leaflet
 pandas
 plotly
 flask
-gunicorn
-sqlite3
+gunicorn==20.1.0  # Fix Gunicorn version
