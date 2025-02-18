@@ -1,6 +1,7 @@
 dash
 dash-bootstrap-components
 dash-leaflet
+biopython
 pandas
 plotly
 flask
