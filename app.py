@@ -23,7 +23,7 @@ def get_dataframe():
     global df
     if df is None:
         logger.debug("Loading DataFrame...")
-        df = pd.read_pickle('./df_render_optimized.pkl')  # Optimized file
+        df = pd.read_pickle('./df_render.pkl')  # Optimized file
         logger.debug("DataFrame Loaded Successfully")
     return df
 
