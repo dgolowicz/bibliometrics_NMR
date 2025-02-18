@@ -1,4 +1,5 @@
 import pandas as pd
+import sqlite3
 import plotly.express as px
 import dash
 from dash import html, dcc
@@ -6,39 +7,32 @@ import dash_leaflet as dl
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
 import json
-import logging
 
-# Enable logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+# Path to the preloaded database
+DB_FILE = "data.db"
 
-# Path to the GeoJSON data
+# Load GeoJSON data (still needed)
 with open('./maps/worldmap.geo.json') as f:
     countries = json.load(f)
 
-# Lazy-Load DataFrame
-df = None
+# Create Persistent SQLite Connection (Better Performance)
+conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+cursor = conn.cursor()
 
-def get_dataframe():
-    global df
-    if df is None:
-        logger.debug("Loading DataFrame...")
-        df = pd.read_pickle('./df_render.pkl')  # Optimized file
-        logger.debug("DataFrame Loaded Successfully")
-    return df
+# Create Index for Faster Queries (Only Run Once)
+cursor.execute("CREATE INDEX IF NOT EXISTS idx_year_pubmed ON publications(year_pubmed);")
+conn.commit()  # Save changes
 
+# Optimized Query Function (Uses Persistent Connection)
 def get_pubs_per_year():
-    df = get_dataframe()
-    pubs_per_year = df.groupby(by='year_pubmed')[['pmid']]\
-                      .count().reset_index()\
-                      .rename(columns={'pmid': 'count'})\
-                      .sort_values(by='year_pubmed', ascending=False)
+    query = "SELECT year_pubmed, COUNT(*) as count FROM publications GROUP BY year_pubmed ORDER BY count DESC"
+    pubs_per_year = pd.read_sql(query, conn)
     return pubs_per_year
 
 # Initialize Dash App
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-server = app.server  # Gunicorn server instance
+server = app.server  
 
 app.layout = dbc.Container([
     dbc.Row([
