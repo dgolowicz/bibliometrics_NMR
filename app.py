@@ -1,5 +1,5 @@
 import pandas as pd
-import sqlite3
+#import sqlite3
 import plotly.express as px
 import dash
 from dash import html, dcc
@@ -9,18 +9,29 @@ from dash.dependencies import Input, Output
 import json
 
 # Path to the preloaded database
-DB_FILE = "data.db"
+#DB_FILE = "data.db"
 
 # Load GeoJSON data (still needed)
 with open('./maps/worldmap.geo.json') as f:
     countries = json.load(f)
 
+# Load dataframe to RAM
+df = pd.read_pickle('./df_render.pkl')
+
+# # Fetch Data from DB (only when needed)
+# def get_pubs_per_year():
+#     conn = sqlite3.connect(DB_FILE)
+#     query = "SELECT year_pubmed, COUNT(*) as count FROM publications GROUP BY year_pubmed ORDER BY count DESC"
+#     pubs_per_year = pd.read_sql(query, conn)
+#     conn.close()
+#     return pubs_per_year
+
 # Fetch Data from DB (only when needed)
 def get_pubs_per_year():
-    conn = sqlite3.connect(DB_FILE)
-    query = "SELECT year_pubmed, COUNT(*) as count FROM publications GROUP BY year_pubmed ORDER BY count DESC"
-    pubs_per_year = pd.read_sql(query, conn)
-    conn.close()
+    pubs_per_year = df.groupby(by='year_pubmed')[['pmid']]\
+                    .count().reset_index()\
+                    .rename(columns={'pmid':'count'})\
+                    .sort_values(by='year_pubmed', ascending=False)
     return pubs_per_year
 
 # Initialize Dash App
