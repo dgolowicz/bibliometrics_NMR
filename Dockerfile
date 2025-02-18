@@ -21,6 +21,7 @@ COPY . .
 EXPOSE 8080
 
 # Start the app with Gunicorn
-CMD ["gunicorn", "-w", "1", "--timeout", "60", "-b", "0.0.0.0:8080", "app:server"]
+CMD ["gunicorn", "-w", "1", "--threads", "2", "--timeout", "180", "-b", "0.0.0.0:8080", "app:server"]
+
 
 
