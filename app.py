@@ -12,7 +12,7 @@ import json
 DB_FILE = "data.db"
 
 # Load GeoJSON data (still needed)
-with open('./maps/worldmap.geo.json') as f:
+with open('./maps/world.geojson') as f:
     countries = json.load(f)
 
 # Create Persistent SQLite Connection (Better Performance)
@@ -24,8 +24,11 @@ cursor.execute("CREATE INDEX IF NOT EXISTS idx_year_pubmed ON publications(year_
 conn.commit()  # Save changes
 
 # Optimized Query Function (Uses Persistent Connection)
-def get_pubs_per_year():
-    query = "SELECT year_pubmed, COUNT(*) as count FROM publications GROUP BY year_pubmed ORDER BY count DESC"
+def get_pubs_per_year_per_country(country_code):
+    query = "SELECT year_pubmed,COUNT(*) as count FROM publications\
+         WHERE majority_country = '{}'\
+         GROUP BY year_pubmed\
+         ORDER BY year_pubmed DESC".format(country_code)
     pubs_per_year = pd.read_sql(query, conn)
     return pubs_per_year
 
@@ -40,10 +43,10 @@ app.layout = dbc.Container([
             html.Div(id='country-name',
                      style={'textAlign': 'center', 'fontSize': '24px', 'padding': '10px', 'backgroundColor': '#f0f0f0'},
                      children='Click on a country to see its name'),
-            html.Label([
-                "Show Postal Codes",
-                dcc.Checklist(id='toggle-postal', options=[{'label': '', 'value': 'show'}], value=[])
-            ], style={'margin': '10px'}),
+            # html.Label([
+            #     "Show Postal Codes",
+            #     dcc.Checklist(id='toggle-postal', options=[{'label': '', 'value': 'show'}], value=[])
+            # ], style={'margin': '10px'}),
             dl.Map(center=[20, 0], zoom=2, children=[
                 dl.GeoJSON(data=countries, id="geojson",
                            style=dict(color='black', weight=1, fillOpacity=0.1),
@@ -59,26 +62,29 @@ app.layout = dbc.Container([
 
 # Update Graph Dynamically
 @app.callback(Output('barplot', 'figure'), Input('geojson', 'clickData'))
-def update_bar_chart(_):
-    pubs_per_year = get_pubs_per_year()
-    fig = px.bar(pubs_per_year, y="year_pubmed", x="count", orientation='h', height=800)
-    fig.update_traces(marker_color='black')
-    return fig
+def update_bar_chart(click_data):
+    if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
+        country_code = click_data['properties']['ISO_A2']
+        pubs_per_year = get_pubs_per_year_per_country(country_code)
+        fig = px.bar(pubs_per_year, y="year_pubmed", x="count", orientation='h', height=800)
+        fig.update_traces(marker_color='black')
+        return fig
+    return 'Click on a country for statistics'
 
 @app.callback(Output('country-name', 'children'), Input('geojson', 'clickData'))
 def display_country_name(click_data):
-    if click_data and 'properties' in click_data and 'name' in click_data['properties']:
-        return f"{click_data['properties']['name']}"
+    if click_data and 'properties' in click_data and 'NAME' in click_data['properties']:
+        return f"{click_data['properties']['NAME']}"
     return "Click on a country to see its name."
 
-@app.callback(Output('postal-layer', 'children'), Input('toggle-postal', 'value'))
-def toggle_postal_codes(show_postal):
-    if 'show' in show_postal:
-        labels = [dl.Marker(position=[f['properties'].get('label_y', 0), f['properties'].get('label_x', 0)],
-                            children=dl.Tooltip(f['properties'].get('postal', ''), permanent=True))
-                  for f in countries['features'] if 'postal' in f['properties']]
-        return labels
-    return []
+# @app.callback(Output('postal-layer', 'children'), Input('toggle-postal', 'value'))
+# def toggle_postal_codes(show_postal):
+#     if 'show' in show_postal:
+#         labels = [dl.Marker(position=[f['properties'].get('label_y', 0), f['properties'].get('label_x', 0)],
+#                             children=dl.Tooltip(f['properties'].get('postal', ''), permanent=True))
+#                   for f in countries['features'] if 'postal' in f['properties']]
+#         return labels
+#     return []
 
 if __name__ == '__main__':
     app.run_server(host='0.0.0.0', port=8080, debug=False)
