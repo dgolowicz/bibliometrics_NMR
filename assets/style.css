@@ -1,0 +1,30 @@
+.rc-slider-track {
+    background-color: #808080 !important;
+}
+
+.rc-slider-rail {
+    background-color: #808080 !important;
+}
+.rc-slider-mark {
+    background-color: #808080 !important;
+    font-size: 18px;
+}
+
+.rc-slider-mark-text {
+    color: #000000 !important;
+}
+
+.rc-slider-handle {
+    background-color: #808080 !important;
+    border-color: #000000 !important;
+}
+
+.rc-slider-step {
+    background-color: #808080 !important;
+}
+
+.rc-slider-dot {
+    background-color: #808080 !important;
+    border-color: #000000 !important;
+}
+

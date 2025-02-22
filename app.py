@@ -24,11 +24,14 @@ cursor.execute("CREATE INDEX IF NOT EXISTS idx_year_pubmed ON publications(year_
 conn.commit()  # Save changes
 
 # Optimized Query Function (Uses Persistent Connection)
-def get_pubs_per_year_per_country(country_code):
+def get_pubs_per_year_per_country(country_code, year_range):
     query = "SELECT year_pubmed,COUNT(*) as count FROM publications\
-         WHERE majority_country = '{}'\
+         WHERE majority_country = '{country}'\
+         AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
          GROUP BY year_pubmed\
-         ORDER BY year_pubmed DESC".format(country_code)
+         ORDER BY year_pubmed DESC".format(country=country_code,
+                                           year_start=year_range[0],
+                                           year_end=year_range[1])
     pubs_per_year = pd.read_sql(query, conn)
     return pubs_per_year
 
@@ -57,15 +60,31 @@ app.layout = dbc.Container([
         dbc.Col([
             dcc.Graph(id='barplot', responsive=False)
         ], width=6),
-    ])
-], fluid=True)
+    ]),
+    # slider
+    dbc.Row([
+        dbc.Col([
+            dcc.RangeSlider(
+                id='year-slider',
+                min=2000,
+                max=2024,
+                step=1,
+                marks={i: str(i) for i in range(2000, 2024+1, 2)},  # every 2 years
+                value=[2000, 2024],  # Default
+                tooltip={"placement": "bottom", "always_visible": True, "style": {"color": "White", "fontSize": "18px"}},
+            )
+        ], width=28)
+    ], style={'padding': '20px'})
+], fluid=True)    
 
-# Update Graph Dynamically
-@app.callback(Output('barplot', 'figure'), Input('geojson', 'clickData'))
-def update_bar_chart(click_data):
+# Update Graph using callbacks
+@app.callback(Output('barplot', 'figure'),
+              [Input('geojson', 'clickData'),
+               Input('year-slider', 'value')])
+def update_bar_chart(click_data, year_range):
     if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
         country_code = click_data['properties']['ISO_A2']
-        pubs_per_year = get_pubs_per_year_per_country(country_code)
+        pubs_per_year = get_pubs_per_year_per_country(country_code, year_range)
         fig = px.bar(pubs_per_year, y="year_pubmed", x="count", orientation='h', height=800)
         fig.update_traces(marker_color='black')
         return fig
