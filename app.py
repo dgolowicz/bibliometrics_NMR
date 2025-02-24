@@ -7,6 +7,98 @@ import dash_leaflet as dl
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
 import json
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+import dash_leaflet.express as dlx
+from dash_extensions.javascript import assign
+from collections import defaultdict
+
+
+
+style_handle = assign("""
+function(feature, context){
+    // If a style for the country exists in the hideout, use it.
+    if (context.hideout && context.hideout.styles && context.hideout.styles[feature.properties.ISO_A2]) {
+        return context.hideout.styles[feature.properties.ISO_A2];
+    }
+    // Otherwise, return a default style.
+    return {color: 'black', weight: 1, fillOpacity: 0.1};
+}
+""")
+
+def sum_collabs_in_years(x):
+    result = defaultdict(int)
+    for d in x:
+        for key, value in d.items():
+            result[key] += value
+
+    sorted_result = dict(sorted(result.items(), key=lambda item: item[1], reverse=True))
+    
+    return dict(sorted_result)
+
+
+# Optimized Query Function (Uses Persistent Connection)
+def get_pubs_per_year_per_country(country_code, year_range):
+    query = "SELECT year_pubmed,COUNT(*) as count FROM publications\
+         WHERE majority_country = '{country}'\
+         AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+         GROUP BY year_pubmed\
+         ORDER BY year_pubmed DESC".format(country=country_code,
+                                           year_start=year_range[0],
+                                           year_end=year_range[1])
+    pubs_per_year = pd.read_sql(query, conn)
+    return pubs_per_year
+
+
+def get_color(value, min_val=0, max_val=200, cmap_name="Blues"):
+    norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
+    cmap = cm.get_cmap(cmap_name)  # Use cm.get_cmap() to retrieve the colormap
+    rgba = cmap(norm(value))
+    return mcolors.to_hex(rgba)
+
+
+
+def collabs_dict(x, country):
+    lst = list(filter(None, x['all_countries'].replace("[", "")\
+                                              .replace("]", "")\
+                                              .replace("'", "")\
+                                              .replace(" ", "")\
+                                              .split(',')))
+    
+    collabs = {x: lst.count(x) for x in lst if x != country}
+    sorted_collabs = dict(sorted(collabs.items(), key=lambda item: item[1], reverse=True))
+    
+    return(sorted_collabs)
+    
+
+def generate_country_styles(selected_country):
+    styles = {}
+ 
+    query = "SELECT year_pubmed, GROUP_CONCAT(countries) AS all_countries\
+            FROM publications\
+            WHERE majority_country = '{country}'\
+            GROUP BY year_pubmed\
+            ORDER BY year_pubmed DESC".format(country=selected_country)
+            
+    df = pd.read_sql(query, conn)
+    #df['collabs'] = df.apply(lambda x: collabs_dict(x, selected_country), axis=1)
+    collab_dict = df.apply(lambda x: collabs_dict(x, selected_country), axis=1)  # TO DO!!! NOW ONLY FOR 2024
+    
+    summed_collab_dict = sum_collabs_in_years(collab_dict)
+       
+    max_collab = max(summed_collab_dict.values()) if summed_collab_dict else 1  # Avoid division by zero
+        
+    # Assign colors based on collaboration frequency
+    for country_code, freq in summed_collab_dict.items():
+        styles[country_code] = {
+            "fillColor": get_color(freq, min_val=0, max_val=max_collab, cmap_name="Blues"),
+            "fillOpacity": 0.8, 
+            "color": "black",
+            "weight": 1
+        }
+    print(styles)
+    return styles
+
 
 # Path to the preloaded database
 DB_FILE = "data.db"
@@ -23,17 +115,6 @@ cursor = conn.cursor()
 cursor.execute("CREATE INDEX IF NOT EXISTS idx_year_pubmed ON publications(year_pubmed);")
 conn.commit()  # Save changes
 
-# Optimized Query Function (Uses Persistent Connection)
-def get_pubs_per_year_per_country(country_code, year_range):
-    query = "SELECT year_pubmed,COUNT(*) as count FROM publications\
-         WHERE majority_country = '{country}'\
-         AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
-         GROUP BY year_pubmed\
-         ORDER BY year_pubmed DESC".format(country=country_code,
-                                           year_start=year_range[0],
-                                           year_end=year_range[1])
-    pubs_per_year = pd.read_sql(query, conn)
-    return pubs_per_year
 
 # Initialize Dash App
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -43,6 +124,21 @@ server = app.server
 app.layout = dbc.Container([
     dbc.Row([
         dbc.Col([
+            dcc.Dropdown(
+                id="metric-dropdown",
+                options=[
+                    {"label": "Collaborators (updates when selecting a country)", "value": "collabs"},
+                    {"label": "GDP", "value": "gdp"},
+                    {"label": "Population", "value": "population"}
+                ],
+                clearable=False,
+                style={
+                    "textAlign": "center",  # Center the text inside the dropdown
+                    "width": "100%",  # Adjust width as needed
+                    "margin": "auto",  # Centers the dropdown in the page
+                    "display": "block"  # Ensures it is treated as a block element
+                },
+                placeholder="Select metrics for coloring the map"),
             html.Div(id='country-name',
                      style={'textAlign': 'center', 'fontSize': '24px', 'padding': '10px', 'backgroundColor': '#f0f0f0'},
                      children='Click on a country to see its name'),
@@ -51,15 +147,21 @@ app.layout = dbc.Container([
             #     dcc.Checklist(id='toggle-postal', options=[{'label': '', 'value': 'show'}], value=[])
             # ], style={'margin': '10px'}),
             dl.Map(center=[20, 0], zoom=2, children=[
-                dl.GeoJSON(data=countries, id="geojson",
-                           style=dict(color='black', weight=1, fillOpacity=0.1),
-                           hoverStyle=dict(weight=2, color='red')),
-                dl.LayerGroup(id='postal-layer')
+                dl.GeoJSON(data=countries,
+                           id="geojson",
+                           style=style_handle,  # use the dynamic style function
+                           hoverStyle=dict(weight=2, color='red'),
+                           hideout=dict(styles={}),  # initial empty styles mapping
+                          )
+
+                # dl.GeoJSON(data=countries, id="geojson",
+                #            style=dict(color='black', weight=1, fillOpacity=0.1),
+                #            hoverStyle=dict(weight=2, color='red')),
             ], style={'height': '800px', 'width': '100%'})
-        ], width=6),
+        ], width=8),
         dbc.Col([
             dcc.Graph(id='barplot', responsive=False)
-        ], width=6),
+        ], width=4),
     ]),
     # slider
     dbc.Row([
@@ -95,6 +197,24 @@ def display_country_name(click_data):
     if click_data and 'properties' in click_data and 'NAME' in click_data['properties']:
         return f"{click_data['properties']['NAME']}"
     return "Click on a country to see its name."
+
+@app.callback(
+    Output("geojson", "hideout"),
+    Input("geojson", "clickData")
+)
+def update_geojson_styles(click_data):
+    if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
+        selected_country = click_data['properties']['ISO_A2']
+        # Generate a new styles dictionary based on the selected country
+        new_styles = generate_country_styles(selected_country)
+        return dict(styles=new_styles)
+    # If no country is clicked, return an empty style mapping.
+    return dict(styles={})
+
+
+
+
+
 
 # @app.callback(Output('postal-layer', 'children'), Input('toggle-postal', 'value'))
 # def toggle_postal_codes(show_postal):
