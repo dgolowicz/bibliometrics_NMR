@@ -27,14 +27,17 @@ function(feature, context){
 """)
 
 def sum_collabs_in_years(x):
-    result = defaultdict(int)
-    for d in x:
-        for key, value in d.items():
-            result[key] += value
+    if not x.empty:
+        result = defaultdict(int)
+        for d in x:
+            for key, value in d.items():
+                result[key] += value
 
-    sorted_result = dict(sorted(result.items(), key=lambda item: item[1], reverse=True))
-    
-    return dict(sorted_result)
+        sorted_result = dict(sorted(result.items(), key=lambda item: item[1], reverse=True))
+        
+        return dict(sorted_result)
+    else: 
+        return {}
 
 
 # Optimized Query Function (Uses Persistent Connection)
@@ -71,14 +74,17 @@ def collabs_dict(x, country):
     return(sorted_collabs)
     
 
-def generate_country_styles(selected_country):
+def generate_country_styles(selected_country, year_range):
     styles = {}
  
     query = "SELECT year_pubmed, GROUP_CONCAT(countries) AS all_countries\
             FROM publications\
             WHERE majority_country = '{country}'\
+            AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
             GROUP BY year_pubmed\
-            ORDER BY year_pubmed DESC".format(country=selected_country)
+            ORDER BY year_pubmed DESC".format(country=selected_country,
+                                           year_start=year_range[0],
+                                           year_end=year_range[1])
             
     df = pd.read_sql(query, conn)
     #df['collabs'] = df.apply(lambda x: collabs_dict(x, selected_country), axis=1)
@@ -96,7 +102,7 @@ def generate_country_styles(selected_country):
             "color": "black",
             "weight": 1
         }
-    print(styles)
+    #print(styles)
     return styles
 
 
@@ -199,14 +205,14 @@ def display_country_name(click_data):
     return "Click on a country to see its name."
 
 @app.callback(
-    Output("geojson", "hideout"),
-    Input("geojson", "clickData")
-)
-def update_geojson_styles(click_data):
+    Output('geojson', 'hideout'),
+    [Input('geojson', 'clickData'),
+     Input('year-slider', 'value')])
+def update_geojson_styles(click_data, year_range):
     if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
         selected_country = click_data['properties']['ISO_A2']
         # Generate a new styles dictionary based on the selected country
-        new_styles = generate_country_styles(selected_country)
+        new_styles = generate_country_styles(selected_country, year_range)
         return dict(styles=new_styles)
     # If no country is clicked, return an empty style mapping.
     return dict(styles={})
