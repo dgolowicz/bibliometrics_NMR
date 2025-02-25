@@ -133,6 +133,7 @@ app.layout = dbc.Container([
             dcc.Dropdown(
                 id="metric-dropdown",
                 options=[
+                    {"label": "No coloring", "value": "nocolors"},
                     {"label": "Collaborators (updates when selecting a country)", "value": "collabs"},
                     {"label": "GDP", "value": "gdp"},
                     {"label": "Population", "value": "population"}
@@ -207,15 +208,28 @@ def display_country_name(click_data):
 @app.callback(
     Output('geojson', 'hideout'),
     [Input('geojson', 'clickData'),
-     Input('year-slider', 'value')])
-def update_geojson_styles(click_data, year_range):
+     Input('year-slider', 'value'),
+     Input('metric-dropdown', 'value')])
+def update_geojson_styles(click_data, year_range, dropdown):
+    new_styles = {}  # Dictionary to hold styles
+
     if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
         selected_country = click_data['properties']['ISO_A2']
-        # Generate a new styles dictionary based on the selected country
-        new_styles = generate_country_styles(selected_country, year_range)
-        return dict(styles=new_styles)
-    # If no country is clicked, return an empty style mapping.
-    return dict(styles={})
+
+        # Set the clicked country's style (always applied)
+        new_styles[selected_country] = {
+            "fillColor": "red",  # Highlight clicked country
+            "fillOpacity": 0.5,
+            "color": "black",
+            "weight": 2
+        }
+
+        # If the dropdown is set to "Collaborators", apply additional styles
+        if dropdown == 'collabs':
+            collab_styles = generate_country_styles(selected_country, year_range)
+            new_styles.update(collab_styles)  # Merge the collaboration styles
+
+    return {"styles": new_styles}  # Update the map with new styles
 
 
 
