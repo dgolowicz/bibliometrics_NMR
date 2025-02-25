@@ -28,3 +28,14 @@
     border-color: #000000 !important;
 }
 
+.VirtualizedSelectOption {    
+    display: inline-block;
+    text-align:center;
+}
+
+.Select-input {
+    text-align: center !important;
+    display: block;
+}
+
+
