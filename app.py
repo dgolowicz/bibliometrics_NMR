@@ -103,7 +103,7 @@ def generate_country_styles(selected_country, year_range):
             "weight": 1
         }
     #print(styles)
-    return styles
+    return styles, max_collab
 
 
 # Path to the preloaded database
@@ -149,22 +149,14 @@ app.layout = dbc.Container([
             html.Div(id='country-name',
                      style={'textAlign': 'center', 'fontSize': '24px', 'padding': '10px', 'backgroundColor': '#f0f0f0'},
                      children='Click on a country to see its name'),
-            # html.Label([
-            #     "Show Postal Codes",
-            #     dcc.Checklist(id='toggle-postal', options=[{'label': '', 'value': 'show'}], value=[])
-            # ], style={'margin': '10px'}),
             dl.Map(center=[20, 0], zoom=2, children=[
                 dl.GeoJSON(data=countries,
                            id="geojson",
                            style=style_handle,  # use the dynamic style function
                            hoverStyle=dict(weight=2, color='red'),
-                           hideout=dict(styles={}),  # initial empty styles mapping
-                          )
-
-                # dl.GeoJSON(data=countries, id="geojson",
-                #            style=dict(color='black', weight=1, fillOpacity=0.1),
-                #            hoverStyle=dict(weight=2, color='red')),
-            ], style={'height': '800px', 'width': '100%'})
+                           hideout=dict(styles={})),  # initial empty styles mapping
+                dl.LayerGroup(id="colorbar-layer")
+                ], style={'height': '800px', 'width': '100%'})
         ], width=8),
         dbc.Col([
             dcc.Graph(id='barplot', responsive=False)
@@ -207,11 +199,14 @@ def display_country_name(click_data):
 
 @app.callback(
     Output('geojson', 'hideout'),
+    Output('colorbar-layer', 'children'),
     [Input('geojson', 'clickData'),
      Input('year-slider', 'value'),
      Input('metric-dropdown', 'value')])
 def update_geojson_styles(click_data, year_range, dropdown):
     new_styles = {}  # Dictionary to hold styles
+    colorbar = None
+
 
     if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
         selected_country = click_data['properties']['ISO_A2']
@@ -226,10 +221,22 @@ def update_geojson_styles(click_data, year_range, dropdown):
 
         # If the dropdown is set to "Collaborators", apply additional styles
         if dropdown == 'collabs':
-            collab_styles = generate_country_styles(selected_country, year_range)
+            collab_styles, max_collab = generate_country_styles(selected_country, year_range)
             new_styles.update(collab_styles)  # Merge the collaboration styles
+            
+            colorbar = dl.Colorbar(
+                id="colorbar",
+                width=30,
+                height=750,
+                colorscale="Blues",
+                min=0,
+                max=max_collab,
+                position="bottomright",
+                nTicks = 5,
+            )  
+            
 
-    return {"styles": new_styles}  # Update the map with new styles
+    return {"styles": new_styles}, colorbar   # Update the map with new styles
 
 
 
