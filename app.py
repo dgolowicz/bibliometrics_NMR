@@ -22,9 +22,22 @@ function(feature, context){
         return context.hideout.styles[feature.properties.ISO_A2];
     }
     // Otherwise, return a default style.
-    return {color: 'black', weight: 1, fillOpacity: 0.1};
+    return {color: 'black', weight: 1, fillOpacity: 0.05};
 }
 """)
+
+def best_collabs(x):
+    nmax = len(list(x.items()))
+    if nmax >= 5:
+        output = str(list(x.items())[0:5]).replace("'","").replace("[","").replace("]","").replace("]","")\
+                                                .replace("(","").replace(")","").replace(",",":")
+        return 'Most foreign affiliations: ' + output
+    elif nmax < 5 and nmax >= 1:
+        output = str(list(x.items())[0:nmax]).replace("'","").replace("[","").replace("]","").replace("]","")\
+                                                .replace("(","").replace(")","").replace(",",":")
+        return 'Most foreign affiliations: ' + output
+    else:
+        return 'No foreign affiliations'
 
 def sum_collabs_in_years(x):
     if not x.empty:
@@ -74,7 +87,7 @@ def collabs_dict(x, country):
     return(sorted_collabs)
     
 
-def generate_country_styles(selected_country, year_range):
+def collaborators(selected_country, year_range):
     styles = {}
  
     query = "SELECT year_pubmed, GROUP_CONCAT(countries) AS all_countries\
@@ -88,7 +101,7 @@ def generate_country_styles(selected_country, year_range):
             
     df = pd.read_sql(query, conn)
     #df['collabs'] = df.apply(lambda x: collabs_dict(x, selected_country), axis=1)
-    collab_dict = df.apply(lambda x: collabs_dict(x, selected_country), axis=1)  # TO DO!!! NOW ONLY FOR 2024
+    collab_dict = df.apply(lambda x: collabs_dict(x, selected_country), axis=1)
     
     summed_collab_dict = sum_collabs_in_years(collab_dict)
        
@@ -103,7 +116,7 @@ def generate_country_styles(selected_country, year_range):
             "weight": 1
         }
     #print(styles)
-    return styles, max_collab
+    return styles, max_collab, summed_collab_dict
 
 
 # Path to the preloaded database
@@ -129,6 +142,7 @@ server = app.server
 
 app.layout = dbc.Container([
     dbc.Row([
+        
         dbc.Col([
             dcc.Dropdown(
                 id="metric-dropdown",
@@ -156,8 +170,13 @@ app.layout = dbc.Container([
                            hoverStyle=dict(weight=2, color='red'),
                            hideout=dict(styles={})),  # initial empty styles mapping
                 dl.LayerGroup(id="colorbar-layer")
-                ], style={'height': '800px', 'width': '100%'})
-        ], width=8),
+                ], style={'height': '700px', 'width': '100%'}),
+            html.Div(id='extra-info',
+                style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px', 'backgroundColor': '#f0f0f0'},
+                children='\u00A0')
+            ],width=8),
+        
+        
         dbc.Col([
             dcc.Graph(id='barplot', responsive=False)
         ], width=4),
@@ -200,11 +219,13 @@ def display_country_name(click_data):
 @app.callback(
     Output('geojson', 'hideout'),
     Output('colorbar-layer', 'children'),
+    Output('extra-info', 'children'),
     [Input('geojson', 'clickData'),
      Input('year-slider', 'value'),
      Input('metric-dropdown', 'value')])
 def update_geojson_styles(click_data, year_range, dropdown):
     new_styles = {}  # Dictionary to hold styles
+    top_collabs = '\u00A0'
     colorbar = None
 
 
@@ -221,22 +242,26 @@ def update_geojson_styles(click_data, year_range, dropdown):
 
         # If the dropdown is set to "Collaborators", apply additional styles
         if dropdown == 'collabs':
-            collab_styles, max_collab = generate_country_styles(selected_country, year_range)
+            collab_styles, max_collab, collab_dict = collaborators(selected_country, year_range)
             new_styles.update(collab_styles)  # Merge the collaboration styles
             
             colorbar = dl.Colorbar(
                 id="colorbar",
-                width=30,
-                height=750,
+                width=20,
+                height=550,
                 colorscale="Blues",
                 min=0,
                 max=max_collab,
-                position="bottomright",
+                position="bottomleft",
                 nTicks = 5,
-            )  
+            )
+            # top collabs text:
+            print(collab_dict)
+            top_collabs = best_collabs(collab_dict)
+            print(top_collabs)
             
 
-    return {"styles": new_styles}, colorbar   # Update the map with new styles
+    return {"styles": new_styles}, colorbar, top_collabs   # Update the map with new styles
 
 
 
