@@ -5,11 +5,12 @@ import dash
 from dash import html, dcc
 import dash_leaflet as dl
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
+import plotly.graph_objects as go
 import json
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-import dash_leaflet.express as dlx
+#import dash_leaflet.express as dlx
 from dash_extensions.javascript import assign
 from collections import defaultdict
 
@@ -66,7 +67,13 @@ def get_pubs_per_year_per_country(country_code, year_range):
     return pubs_per_year
 
 
-def get_color(value, min_val=0, max_val=200, cmap_name="Blues"):
+def get_color_collabs(value, min_val=0, max_val=200, cmap_name="Blues"):
+    norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
+    cmap = cm.get_cmap(cmap_name)  # Use cm.get_cmap() to retrieve the colormap
+    rgba = cmap(norm(value))
+    return mcolors.to_hex(rgba)
+
+def get_color_avg_authors(value, min_val=0, max_val=200, cmap_name="RdBu"):
     norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
     cmap = cm.get_cmap(cmap_name)  # Use cm.get_cmap() to retrieve the colormap
     rgba = cmap(norm(value))
@@ -110,7 +117,7 @@ def collaborators(selected_country, year_range):
     # Assign colors based on collaboration frequency
     for country_code, freq in summed_collab_dict.items():
         styles[country_code] = {
-            "fillColor": get_color(freq, min_val=0, max_val=max_collab, cmap_name="Blues"),
+            "fillColor": get_color_collabs(freq, min_val=0, max_val=max_collab, cmap_name="Blues"),
             "fillOpacity": 0.8, 
             "color": "black",
             "weight": 1
@@ -118,6 +125,28 @@ def collaborators(selected_country, year_range):
     #print(styles)
     return styles, max_collab, summed_collab_dict
 
+def avg_number_authors(year_range, min_records):
+    styles = {}
+    
+    query = "SELECT majority_country,ROUND(AVG(authors_number),2) FROM publications\
+                WHERE majority_country != 'Multinational'\
+                AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+                GROUP BY majority_country".format(year_start=year_range[0], year_end=year_range[1])
+                
+    cursor.execute(query)
+    result_dict = dict(cursor.fetchall())
+    max_av_authors = max(result_dict.values())
+    
+    # Assign colors based on number of average number of authors
+    for country_code, av_authors in result_dict.items():
+        styles[country_code] = {
+            "fillColor": get_color_avg_authors(av_authors, min_val=1, max_val=max_av_authors, cmap_name="RdBu"),
+            "fillOpacity": 0.8, 
+            "color": "black",
+            "weight": 1
+        }
+    print(min_records)
+    return styles, max_av_authors
 
 # Path to the preloaded database
 DB_FILE = "data.db"
@@ -136,7 +165,7 @@ conn.commit()  # Save changes
 
 
 # Initialize Dash App
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP],suppress_callback_exceptions=True)
 
 server = app.server  
 
@@ -144,20 +173,21 @@ app.layout = dbc.Container([
     dbc.Row([
         
         dbc.Col([
+            dcc.Store(id="stored-avg-authors", data=10),
             dcc.Dropdown(
                 id="metric-dropdown",
                 options=[
                     {"label": "No coloring", "value": "nocolors"},
                     {"label": "Collaborators (updates when selecting a country)", "value": "collabs"},
-                    {"label": "GDP", "value": "gdp"},
+                    {"label": "Average number of authors", "value": "avg_authors"},
                     {"label": "Population", "value": "population"}
                 ],
                 clearable=False,
                 style={
-                    "textAlign": "center",  # Center the text inside the dropdown
-                    "width": "100%",  # Adjust width as needed
-                    "margin": "auto",  # Centers the dropdown in the page
-                    "display": "block"  # Ensures it is treated as a block element
+                    "textAlign": "center",
+                    "width": "100%",
+                    "margin": "auto",
+                    "display": "block"
                 },
                 placeholder="Select metrics for coloring the map"),
             html.Div(id='country-name',
@@ -171,14 +201,35 @@ app.layout = dbc.Container([
                            hideout=dict(styles={})),  # initial empty styles mapping
                 dl.LayerGroup(id="colorbar-layer")
                 ], style={'height': '700px', 'width': '100%'}),
-            html.Div(id='extra-info',
-                style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px', 'backgroundColor': '#f0f0f0'},
-                children='\u00A0')
+                html.Div(id='extra-info',style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px','backgroundColor': '#f0f0f0'},
+                        children=[html.Span(id='info-text', children="\u00A0"),  # Placeholder text
+                dcc.Input(
+                    id='avg-authors-input',
+                    type='number',
+                    placeholder='10',
+                    value=10,
+                    style={'display': 'none'}  # Initially hidden
+                )
+        ]
+    )
+            
+            
+            
+            # html.Div(id='extra-info',style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px', 'backgroundColor': '#f0f0f0'}, children='\u00A0'),
+            #     dcc.Input(
+            #         id='avg-authors-input',
+            #         type='number',
+            #         placeholder='Enter number of authors',
+            #         style={'display': 'none'}  # Initially hidden
+            #     ) 
+            # html.Div(id='extra-info',
+            #     style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px', 'backgroundColor': '#f0f0f0'},
+            #     children='\u00A0')
             ],width=8),
         
         
         dbc.Col([
-            dcc.Graph(id='barplot', responsive=False)
+            dcc.Graph(id='barplot', responsive=True)
         ], width=4),
     ]),
     # slider
@@ -208,7 +259,7 @@ def update_bar_chart(click_data, year_range):
         fig = px.bar(pubs_per_year, y="year_pubmed", x="count", orientation='h', height=800)
         fig.update_traces(marker_color='black')
         return fig
-    return 'Click on a country for statistics'
+    return go.Figure(layout={"title": "Click on a country for statistics"})
 
 @app.callback(Output('country-name', 'children'), Input('geojson', 'clickData'))
 def display_country_name(click_data):
@@ -216,19 +267,45 @@ def display_country_name(click_data):
         return f"{click_data['properties']['NAME']}"
     return "Click on a country to see its name."
 
+# pop up window for setting lower limit of publications to qualify country
+# for calculation of average number of authors
+@app.callback(
+    Output("stored-avg-authors", "data"),
+    Input({'type': 'dynamic-input', 'id': 'avg-authors-input'}, "n_blur"),
+    State({'type': 'dynamic-input', 'id': 'avg-authors-input'}, "value"),
+    prevent_initial_call=True
+)
+def store_avg_authors(_, value):
+    if value is None or value == '':
+        return 10
+    return value 
+
+# @app.callback(
+#     Output({'type': 'dynamic-input', 'id': 'avg-authors-input'}, "value"),
+#     Input("stored-avg-authors", "data")
+# )
+# def sync_input_with_store(stored_value):
+#     return stored_value  # ✅ Ensures input always displays the stored value
+
+
+
+
 @app.callback(
     Output('geojson', 'hideout'),
     Output('colorbar-layer', 'children'),
     Output('extra-info', 'children'),
     [Input('geojson', 'clickData'),
      Input('year-slider', 'value'),
-     Input('metric-dropdown', 'value')])
-def update_geojson_styles(click_data, year_range, dropdown):
+     Input('metric-dropdown', 'value'),
+     Input('stored-avg-authors', 'data')],
+    prevent_initial_call=True
+)
+def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
     new_styles = {}  # Dictionary to hold styles
-    top_collabs = '\u00A0'
+    extra_info = '\u00A0'
     colorbar = None
 
-
+    #COLLABORATORS MAP
     if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
         selected_country = click_data['properties']['ISO_A2']
 
@@ -240,7 +317,6 @@ def update_geojson_styles(click_data, year_range, dropdown):
             "weight": 2
         }
 
-        # If the dropdown is set to "Collaborators", apply additional styles
         if dropdown == 'collabs':
             collab_styles, max_collab, collab_dict = collaborators(selected_country, year_range)
             new_styles.update(collab_styles)  # Merge the collaboration styles
@@ -255,13 +331,41 @@ def update_geojson_styles(click_data, year_range, dropdown):
                 position="bottomleft",
                 nTicks = 5,
             )
-            # top collabs text:
-            print(collab_dict)
-            top_collabs = best_collabs(collab_dict)
-            print(top_collabs)
-            
 
-    return {"styles": new_styles}, colorbar, top_collabs   # Update the map with new styles
+            extra_info = best_collabs(collab_dict)
+    
+    
+    # AVG AUTHORS MAP
+    if dropdown == 'avg_authors':
+        avg_authors_styles, max_avg_authors = avg_number_authors(year_range, avg_authors_input)
+        new_styles.update(avg_authors_styles)
+
+        colorbar = dl.Colorbar(
+            id="colorbar",
+            width=20,
+            height=550,
+            colorscale="RdBu",
+            min=1,
+            max=int(max_avg_authors) + 1,
+            position="bottomleft",
+            nTicks=int(max_avg_authors) + 2
+        )
+
+        # Display the input field for 'avg_authors'
+        extra_info = html.Span([
+            "Include countries with at least ",
+            dcc.Input(
+                id={'type': 'dynamic-input', 'id': 'avg-authors-input'},
+                type='number',
+                placeholder='10',
+                value=10,
+                style={'display': 'inline-block', 'width': '60px', 'margin': '0 5px'}
+            ),
+            " publications in a selected years range"
+        ])
+
+    return {"styles": new_styles}, colorbar, extra_info
+
 
 
 
@@ -278,4 +382,4 @@ def update_geojson_styles(click_data, year_range, dropdown):
 #     return []
 
 if __name__ == '__main__':
-    app.run_server(host='0.0.0.0', port=8080, debug=False)
+    app.run_server(host='0.0.0.0', port=8080, debug=True)
