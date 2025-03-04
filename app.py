@@ -131,11 +131,14 @@ def avg_number_authors(year_range, min_records):
     query = "SELECT majority_country,ROUND(AVG(authors_number),2) FROM publications\
                 WHERE majority_country != 'Multinational'\
                 AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
-                GROUP BY majority_country".format(year_start=year_range[0], year_end=year_range[1])
+                GROUP BY majority_country\
+                HAVING COUNT(*) >= {min_papers}".format(year_start=year_range[0],
+                                                          year_end=year_range[1],
+                                                          min_papers = min_records)
                 
     cursor.execute(query)
     result_dict = dict(cursor.fetchall())
-    max_av_authors = max(result_dict.values())
+    max_av_authors = max(result_dict.values(), default=0)
     
     # Assign colors based on number of average number of authors
     for country_code, av_authors in result_dict.items():
@@ -271,21 +274,14 @@ def display_country_name(click_data):
 # for calculation of average number of authors
 @app.callback(
     Output("stored-avg-authors", "data"),
-    Input({'type': 'dynamic-input', 'id': 'avg-authors-input'}, "n_blur"),
-    State({'type': 'dynamic-input', 'id': 'avg-authors-input'}, "value"),
+    Input({'type': 'dynamic-input', 'id': 'avg-authors-input'}, "value"),
+    #State({'type': 'dynamic-input', 'id': 'avg-authors-input'}, "value"),
     prevent_initial_call=True
 )
-def store_avg_authors(_, value):
+def store_avg_authors(value):
     if value is None or value == '':
         return 10
     return value 
-
-# @app.callback(
-#     Output({'type': 'dynamic-input', 'id': 'avg-authors-input'}, "value"),
-#     Input("stored-avg-authors", "data")
-# )
-# def sync_input_with_store(stored_value):
-#     return stored_value  # ✅ Ensures input always displays the stored value
 
 
 
@@ -357,11 +353,12 @@ def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
             dcc.Input(
                 id={'type': 'dynamic-input', 'id': 'avg-authors-input'},
                 type='number',
-                placeholder='10',
-                value=10,
+                debounce=True,
+#                placeholder='10',
+                value=avg_authors_input,
                 style={'display': 'inline-block', 'width': '60px', 'margin': '0 5px'}
             ),
-            " publications in a selected years range"
+            " publications in a selected years range (confirm by pressing enter)"
         ])
 
     return {"styles": new_styles}, colorbar, extra_info
@@ -382,4 +379,4 @@ def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
 #     return []
 
 if __name__ == '__main__':
-    app.run_server(host='0.0.0.0', port=8080, debug=True)
+    app.run_server(host='0.0.0.0', port=8080, debug=False)
