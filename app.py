@@ -67,17 +67,17 @@ def get_pubs_per_year_per_country(country_code, year_range):
     return pubs_per_year
 
 
-def get_color_collabs(value, min_val=0, max_val=200, cmap_name="Blues"):
+def get_color(value, min_val=0, max_val=200, cmap_name="Blues"):
     norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
     cmap = cm.get_cmap(cmap_name)  # Use cm.get_cmap() to retrieve the colormap
     rgba = cmap(norm(value))
     return mcolors.to_hex(rgba)
 
-def get_color_avg_authors(value, min_val=0, max_val=200, cmap_name="RdBu"):
-    norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
-    cmap = cm.get_cmap(cmap_name)  # Use cm.get_cmap() to retrieve the colormap
-    rgba = cmap(norm(value))
-    return mcolors.to_hex(rgba)
+# def get_color_avg_authors(value, min_val=0, max_val=200, cmap_name="RdBu"):
+#     norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
+#     cmap = cm.get_cmap(cmap_name)  # Use cm.get_cmap() to retrieve the colormap
+#     rgba = cmap(norm(value))
+#     return mcolors.to_hex(rgba)
 
 
 
@@ -117,7 +117,7 @@ def collaborators(selected_country, year_range):
     # Assign colors based on collaboration frequency
     for country_code, freq in summed_collab_dict.items():
         styles[country_code] = {
-            "fillColor": get_color_collabs(freq, min_val=0, max_val=max_collab, cmap_name="Blues"),
+            "fillColor": get_color(freq, min_val=0, max_val=max_collab, cmap_name="Blues"),
             "fillOpacity": 0.8, 
             "color": "black",
             "weight": 1
@@ -138,18 +138,21 @@ def avg_number_authors(year_range, min_records):
                 
     cursor.execute(query)
     result_dict = dict(cursor.fetchall())
-    max_av_authors = max(result_dict.values(), default=0)
+    max_av_authors = max(result_dict.values(), default=10)
+    min_av_authors = min(result_dict.values(), default=1)
+
     
     # Assign colors based on number of average number of authors
     for country_code, av_authors in result_dict.items():
         styles[country_code] = {
-            "fillColor": get_color_avg_authors(av_authors, min_val=1, max_val=max_av_authors, cmap_name="RdBu"),
+            "fillColor": get_color(av_authors, min_val=min_av_authors,
+                                   max_val=max_av_authors, cmap_name="Blues"),
             "fillOpacity": 0.8, 
             "color": "black",
             "weight": 1
         }
     print(min_records)
-    return styles, max_av_authors
+    return styles, min_av_authors, max_av_authors
 
 # Path to the preloaded database
 DB_FILE = "data.db"
@@ -333,15 +336,15 @@ def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
     
     # AVG AUTHORS MAP
     if dropdown == 'avg_authors':
-        avg_authors_styles, max_avg_authors = avg_number_authors(year_range, avg_authors_input)
+        avg_authors_styles, min_avg_authors, max_avg_authors = avg_number_authors(year_range, avg_authors_input)
         new_styles.update(avg_authors_styles)
 
         colorbar = dl.Colorbar(
             id="colorbar",
             width=20,
             height=550,
-            colorscale="RdBu",
-            min=1,
+            colorscale="Blues",
+            min=int(min_avg_authors),
             max=int(max_avg_authors) + 1,
             position="bottomleft",
             nTicks=int(max_avg_authors) + 2
