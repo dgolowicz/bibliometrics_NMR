@@ -138,9 +138,8 @@ def avg_number_authors(year_range, min_records):
                 
     cursor.execute(query)
     result_dict = dict(cursor.fetchall())
-    max_av_authors = max(result_dict.values(), default=10)
+    max_av_authors = max(result_dict.values(), default=100)
     min_av_authors = min(result_dict.values(), default=1)
-
     
     # Assign colors based on number of average number of authors
     for country_code, av_authors in result_dict.items():
@@ -152,7 +151,7 @@ def avg_number_authors(year_range, min_records):
             "weight": 1
         }
     print(min_records)
-    return styles, min_av_authors, max_av_authors
+    return styles, min_av_authors, max_av_authors, result_dict
 
 # Path to the preloaded database
 DB_FILE = "data.db"
@@ -179,7 +178,7 @@ app.layout = dbc.Container([
     dbc.Row([
         
         dbc.Col([
-            dcc.Store(id="stored-avg-authors", data=10),
+            dcc.Store(id="stored-avg-authors", data=100),
             dcc.Dropdown(
                 id="metric-dropdown",
                 options=[
@@ -199,6 +198,9 @@ app.layout = dbc.Container([
             html.Div(id='country-name',
                      style={'textAlign': 'center', 'fontSize': '24px', 'padding': '10px', 'backgroundColor': '#f0f0f0'},
                      children='Click on a country to see its name'),
+            html.Div(id='extra-info-top',
+                     style={'textAlign': 'center', 'fontSize': '12px', 'padding': '1px', 'backgroundColor': 'rgba(0, 0, 0, 0.135)'},
+                     children='\u00A0'),
             dl.Map(center=[20, 0], zoom=2, children=[
                 dl.GeoJSON(data=countries,
                            id="geojson",
@@ -208,12 +210,12 @@ app.layout = dbc.Container([
                 dl.LayerGroup(id="colorbar-layer")
                 ], style={'height': '700px', 'width': '100%'}),
                 html.Div(id='extra-info',style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px','backgroundColor': '#f0f0f0'},
-                        children=[html.Span(id='info-text', children="\u00A0"),  # Placeholder text
+                        children=[html.Span(id='info-text', children='\u00A0'),  # Placeholder text
                 dcc.Input(
                     id='avg-authors-input',
                     type='number',
-                    placeholder='10',
-                    value=10,
+                    placeholder='100',
+                    value=100,
                     style={'display': 'none'}  # Initially hidden
                 )
         ]
@@ -283,7 +285,7 @@ def display_country_name(click_data):
 )
 def store_avg_authors(value):
     if value is None or value == '':
-        return 10
+        return 100
     return value 
 
 
@@ -293,6 +295,7 @@ def store_avg_authors(value):
     Output('geojson', 'hideout'),
     Output('colorbar-layer', 'children'),
     Output('extra-info', 'children'),
+    Output('extra-info-top', 'children'),
     [Input('geojson', 'clickData'),
      Input('year-slider', 'value'),
      Input('metric-dropdown', 'value'),
@@ -302,6 +305,7 @@ def store_avg_authors(value):
 def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
     new_styles = {}  # Dictionary to hold styles
     extra_info = '\u00A0'
+    extra_info_top = '\u00A0'
     colorbar = None
 
     #COLLABORATORS MAP
@@ -336,8 +340,9 @@ def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
     
     # AVG AUTHORS MAP
     if dropdown == 'avg_authors':
-        avg_authors_styles, min_avg_authors, max_avg_authors = avg_number_authors(year_range, avg_authors_input)
+        avg_authors_styles, min_avg_authors, max_avg_authors, avg_authors_result_dict = avg_number_authors(year_range, avg_authors_input)
         new_styles.update(avg_authors_styles)
+
 
         colorbar = dl.Colorbar(
             id="colorbar",
@@ -363,8 +368,14 @@ def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
             ),
             " publications in a selected years range (confirm by pressing enter)"
         ])
+        
+        # Display the top extra info
+        try:
+            extra_info_top = avg_authors_result_dict[selected_country]
+        except (NameError, KeyError):
+            extra_info_top = '\u00A0'
 
-    return {"styles": new_styles}, colorbar, extra_info
+    return {"styles": new_styles}, colorbar, extra_info, extra_info_top
 
 
 
