@@ -153,6 +153,34 @@ def avg_number_authors(year_range, min_records):
     print(min_records)
     return styles, min_av_authors, max_av_authors, result_dict
 
+def avg_number_references(year_range, min_records):
+    styles = {}
+    
+    query = "SELECT majority_country,ROUND(AVG(n_references),2) FROM publications\
+                WHERE majority_country != 'Multinational'\
+                AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+                GROUP BY majority_country\
+                HAVING COUNT(*) >= {min_papers}".format(year_start=year_range[0],
+                                                          year_end=year_range[1],
+                                                          min_papers = min_records)
+                
+    cursor.execute(query)
+    result_dict = dict(cursor.fetchall())
+    max_av_references = max(result_dict.values(), default=100)
+    min_av_references = min(result_dict.values(), default=1)
+    
+    # Assign colors based on number of average number of authors
+    for country_code, av_references in result_dict.items():
+        styles[country_code] = {
+            "fillColor": get_color(av_references, min_val=min_av_references,
+                                   max_val=max_av_references, cmap_name="Blues"),
+            "fillOpacity": 0.8, 
+            "color": "black",
+            "weight": 1
+        }
+    print(min_records)
+    return styles, min_av_references, max_av_references, result_dict
+
 
 def open_access_perc(year_range, min_records):
     styles = {}
@@ -213,7 +241,8 @@ app.layout = dbc.Container([
                     {"label": "No coloring", "value": "nocolors"},
                     {"label": "Collaborators (updates when selecting a country)", "value": "collabs"},
                     {"label": "Average number of authors", "value": "avg_authors"},
-                    {"label": "Open Access", "value": "open_access"}
+                    {"label": "Open Access (percent)", "value": "open_access"},
+                    {"label": "Average number of references", "value": "avg_references"}
                 ],
                 clearable=False,
                 style={
@@ -229,7 +258,7 @@ app.layout = dbc.Container([
             html.Div(id='extra-info-top',
                      style={'textAlign': 'center', 'fontSize': '12px', 'padding': '1px', 'backgroundColor': 'rgba(0, 0, 0, 0.135)'},
                      children='\u00A0'),
-            dl.Map(center=[20, 0], zoom=2, children=[
+            dl.Map(center=[20, 0], zoom=2, attributionControl=False, children=[
                 dl.GeoJSON(data=countries,
                            id="geojson",
                            style=style_handle,  # use the dynamic style function
@@ -399,6 +428,42 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
         # Display the top extra info
         try:
             extra_info_top = avg_authors_result_dict[selected_country]
+        except (NameError, KeyError):
+            extra_info_top = '\u00A0'
+            
+    # AVG REFERENCES MAP
+    if dropdown == 'avg_references':
+        avg_references_styles, min_avg_references, max_avg_references, avg_references_result_dict = avg_number_references(year_range, min_papers_input)
+        new_styles.update(avg_references_styles)
+
+        colorbar = dl.Colorbar(
+            id="colorbar",
+            width=20,
+            height=550,
+            colorscale="Blues",
+            min=int(min_avg_references),
+            max=int(max_avg_references) + 1,
+            position="bottomleft",
+            nTicks=10
+        )
+
+        # Display the input field for 'avg_authors'
+        extra_info = html.Span([
+            "Include countries with at least ",
+            dcc.Input(
+                id={'type': 'dynamic-input', 'id': 'min-papers-input'},
+                type='number',
+                debounce=True,
+#                placeholder='10',
+                value=min_papers_input,
+                style={'display': 'inline-block', 'width': '60px', 'margin': '0 5px'}
+            ),
+            " publications in a selected years range (confirm by pressing enter)"
+        ])
+        
+        # Display the top extra info
+        try:
+            extra_info_top = avg_references_result_dict[selected_country]
         except (NameError, KeyError):
             extra_info_top = '\u00A0'
             
