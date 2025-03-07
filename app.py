@@ -153,6 +153,34 @@ def avg_number_authors(year_range, min_records):
     print(min_records)
     return styles, min_av_authors, max_av_authors, result_dict
 
+
+def open_access_perc(year_range, min_records):
+    styles = {}
+    
+    query = "SELECT majority_country, ROUND(CAST(SUM(is_open_access) AS FLOAT)*100 / COUNT(is_open_access),1) FROM publications\
+                WHERE majority_country != 'Multinational'\
+                AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+                GROUP BY majority_country\
+                HAVING COUNT(*) >= {min_papers}".format(year_start=year_range[0],
+                                                          year_end=year_range[1],
+                                                          min_papers = min_records)
+                
+    cursor.execute(query)
+    result_dict = dict(cursor.fetchall())
+    #max_perc_oa = max(result_dict.values(), default=100)
+    #min_perc_oa = min(result_dict.values(), default=0)
+    
+    # Assign colors based on number of average number of authors
+    for country_code, oa_perc in result_dict.items():
+        styles[country_code] = {
+            "fillColor": get_color(oa_perc, min_val=0,
+                                   max_val=100, cmap_name="RdBu"),
+            "fillOpacity": 0.8, 
+            "color": "black",
+            "weight": 1
+        }
+    return styles, result_dict
+
 # Path to the preloaded database
 DB_FILE = "data.db"
 
@@ -178,14 +206,14 @@ app.layout = dbc.Container([
     dbc.Row([
         
         dbc.Col([
-            dcc.Store(id="stored-avg-authors", data=100),
+            dcc.Store(id="stored-min-papers", data=100),
             dcc.Dropdown(
                 id="metric-dropdown",
                 options=[
                     {"label": "No coloring", "value": "nocolors"},
                     {"label": "Collaborators (updates when selecting a country)", "value": "collabs"},
                     {"label": "Average number of authors", "value": "avg_authors"},
-                    {"label": "Population", "value": "population"}
+                    {"label": "Open Access", "value": "open_access"}
                 ],
                 clearable=False,
                 style={
@@ -205,14 +233,14 @@ app.layout = dbc.Container([
                 dl.GeoJSON(data=countries,
                            id="geojson",
                            style=style_handle,  # use the dynamic style function
-                           hoverStyle=dict(weight=2, color='red'),
+                           hoverStyle=dict(weight=3, color='red'),
                            hideout=dict(styles={})),  # initial empty styles mapping
                 dl.LayerGroup(id="colorbar-layer")
                 ], style={'height': '700px', 'width': '100%'}),
                 html.Div(id='extra-info',style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px','backgroundColor': '#f0f0f0'},
                         children=[html.Span(id='info-text', children='\u00A0'),  # Placeholder text
                 dcc.Input(
-                    id='avg-authors-input',
+                    id='min-papers-input',
                     type='number',
                     placeholder='100',
                     value=100,
@@ -278,12 +306,11 @@ def display_country_name(click_data):
 # pop up window for setting lower limit of publications to qualify country
 # for calculation of average number of authors
 @app.callback(
-    Output("stored-avg-authors", "data"),
-    Input({'type': 'dynamic-input', 'id': 'avg-authors-input'}, "value"),
-    #State({'type': 'dynamic-input', 'id': 'avg-authors-input'}, "value"),
+    Output("stored-min-papers", "data"),
+    Input({'type': 'dynamic-input', 'id': 'min-papers-input'}, "value"),
     prevent_initial_call=True
 )
-def store_avg_authors(value):
+def store_min_papers(value):
     if value is None or value == '':
         return 100
     return value 
@@ -299,16 +326,16 @@ def store_avg_authors(value):
     [Input('geojson', 'clickData'),
      Input('year-slider', 'value'),
      Input('metric-dropdown', 'value'),
-     Input('stored-avg-authors', 'data')],
+     Input('stored-min-papers', 'data')],
     prevent_initial_call=True
 )
-def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
+def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
     new_styles = {}  # Dictionary to hold styles
     extra_info = '\u00A0'
     extra_info_top = '\u00A0'
     colorbar = None
 
-    #COLLABORATORS MAP
+
     if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
         selected_country = click_data['properties']['ISO_A2']
 
@@ -317,9 +344,9 @@ def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
             "fillColor": "red",  # Highlight clicked country
             "fillOpacity": 0.5,
             "color": "black",
-            "weight": 2
+            "weight": 2.5
         }
-
+        #COLLABORATORS MAP
         if dropdown == 'collabs':
             collab_styles, max_collab, collab_dict = collaborators(selected_country, year_range)
             new_styles.update(collab_styles)  # Merge the collaboration styles
@@ -340,7 +367,7 @@ def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
     
     # AVG AUTHORS MAP
     if dropdown == 'avg_authors':
-        avg_authors_styles, min_avg_authors, max_avg_authors, avg_authors_result_dict = avg_number_authors(year_range, avg_authors_input)
+        avg_authors_styles, min_avg_authors, max_avg_authors, avg_authors_result_dict = avg_number_authors(year_range, min_papers_input)
         new_styles.update(avg_authors_styles)
 
 
@@ -359,11 +386,11 @@ def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
         extra_info = html.Span([
             "Include countries with at least ",
             dcc.Input(
-                id={'type': 'dynamic-input', 'id': 'avg-authors-input'},
+                id={'type': 'dynamic-input', 'id': 'min-papers-input'},
                 type='number',
                 debounce=True,
 #                placeholder='10',
-                value=avg_authors_input,
+                value=min_papers_input,
                 style={'display': 'inline-block', 'width': '60px', 'margin': '0 5px'}
             ),
             " publications in a selected years range (confirm by pressing enter)"
@@ -372,6 +399,43 @@ def update_geojson_styles(click_data, year_range, dropdown, avg_authors_input):
         # Display the top extra info
         try:
             extra_info_top = avg_authors_result_dict[selected_country]
+        except (NameError, KeyError):
+            extra_info_top = '\u00A0'
+            
+            
+    # OPEN ACCESS PERCENT MAP
+    if dropdown == 'open_access':
+        oa_styles, oa_result_dict = open_access_perc(year_range, min_papers_input)
+        new_styles.update(oa_styles)
+
+        colorbar = dl.Colorbar(
+            id="colorbar",
+            width=20,
+            height=550,
+            colorscale="RdBu",
+            min=0,
+            max=100,
+            position="bottomleft",
+            nTicks=11
+        )
+
+        # Display the input field for 'avg_authors'
+        extra_info = html.Span([
+            "Include countries with at least ",
+            dcc.Input(
+                id={'type': 'dynamic-input', 'id': 'min-papers-input'},
+                type='number',
+                debounce=True,
+#                placeholder='10',
+                value=min_papers_input,
+                style={'display': 'inline-block', 'width': '60px', 'margin': '0 5px'}
+            ),
+            " publications in a selected years range (confirm by pressing enter)"
+        ])
+        
+        # Display the top extra info
+        try:
+            extra_info_top = str(oa_result_dict[selected_country]) + '%'
         except (NameError, KeyError):
             extra_info_top = '\u00A0'
 
