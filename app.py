@@ -56,7 +56,7 @@ def sum_collabs_in_years(x):
 
 # Optimized Query Function (Uses Persistent Connection)
 def get_pubs_per_year_per_country(country_code, year_range):
-    query = "SELECT year_pubmed,COUNT(*) as count FROM publications\
+    query = "SELECT year_pubmed as Year, COUNT(*) as 'Number of articles' FROM publications\
          WHERE majority_country = '{country}'\
          AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
          GROUP BY year_pubmed\
@@ -268,34 +268,59 @@ app.layout = dbc.Container([
                 ], style={'height': '700px', 'width': '100%'}),
                 html.Div(id='extra-info',style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px','backgroundColor': '#f0f0f0'},
                         children=[html.Span(id='info-text', children='\u00A0'),  # Placeholder text
-                dcc.Input(
-                    id='min-papers-input',
-                    type='number',
-                    placeholder='100',
-                    value=100,
-                    style={'display': 'none'}  # Initially hidden
-                )
-        ]
-    )
-            
-            
-            
-            # html.Div(id='extra-info',style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px', 'backgroundColor': '#f0f0f0'}, children='\u00A0'),
-            #     dcc.Input(
-            #         id='avg-authors-input',
-            #         type='number',
-            #         placeholder='Enter number of authors',
-            #         style={'display': 'none'}  # Initially hidden
-            #     ) 
-            # html.Div(id='extra-info',
-            #     style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px', 'backgroundColor': '#f0f0f0'},
-            #     children='\u00A0')
+                                dcc.Input(
+                                    id='min-papers-input',
+                                    type='number',
+                                    placeholder='100',
+                                    value=100,
+                                    style={'display': 'none'}  # Initially hidden
+                                    )
+                                ]
+                         )
             ],width=8),
         
         
-        dbc.Col([
-            dcc.Graph(id='barplot', responsive=True)
-        ], width=4),
+        dbc.Col(
+            [dcc.Dropdown(
+                id="top-plot-dropdown",
+                options=[
+                    {"label": "No plot", "value": "no_plot"},
+                    {"label": "Number of publications", "value": "plot_pub_num"}
+                ],
+                clearable=False,
+                style={
+                    "textAlign": "center",
+                    "width": "100%",
+                    "margin": "auto",
+                    "display": "block"
+                },
+                placeholder='Select country-specific plot'),
+            html.Div(
+                id='top-plot-container',
+                children=[dcc.Graph(id='top-plot', responsive=True, style={'width': '100%', 'height': '100%'})],
+                style={'height': '400px', 'width': '100%', 'padding-bottom': '10px'}
+            ),
+            
+            dcc.Dropdown(
+                id="bottom-plot-dropdown",
+                options=[
+                    {"label": "No coloring", "value": "nocolors"},
+                    {"label": "Collaborators (updates when selecting a country)", "value": "collabs"}
+                ],
+                clearable=False,
+                style={
+                    "textAlign": "center",
+                    "width": "100%",
+                    "margin": "auto",
+                    "display": "block"
+                },
+                placeholder='Select country-specific plot'),
+            html.Div(
+                id='bottom-plot-container',
+                children=[dcc.Graph(id='bottom-plot', responsive=True, style={'width': '100%', 'height': '100%'})],
+                style={'height': '400px', 'width': '100%'}
+            )
+            ],width=4),
     ]),
     # slider
     dbc.Row([
@@ -313,19 +338,44 @@ app.layout = dbc.Container([
     ], style={'padding': '20px'})
 ], fluid=True)    
 
-# Update Graph using callbacks
-@app.callback(Output('barplot', 'figure'),
+# Top plot callack
+@app.callback(Output('top-plot', 'figure'),
               [Input('geojson', 'clickData'),
-               Input('year-slider', 'value')])
-def update_bar_chart(click_data, year_range):
+               Input('year-slider', 'value'),
+               Input('top-plot-dropdown', 'value')])
+def update_chart_top(click_data, year_range, dropdown):
     if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
         country_code = click_data['properties']['ISO_A2']
-        pubs_per_year = get_pubs_per_year_per_country(country_code, year_range)
-        fig = px.bar(pubs_per_year, y="year_pubmed", x="count", orientation='h', height=800)
-        fig.update_traces(marker_color='black')
-        return fig
-    return go.Figure(layout={"title": "Click on a country for statistics"})
+        
+        if dropdown == 'plot_pub_num':
+            pubs_per_year = get_pubs_per_year_per_country(country_code, year_range)
+            print(pubs_per_year)
+            fig = px.bar(pubs_per_year, y='Year', x='Number of articles', orientation='h', template='plotly_white')
+            fig.update_traces(marker_color='black')
+            return fig
+    return  go.Figure(layout=go.Layout(title=dict(text="Click on a country and select plot type",
+                                                  x=0.5,y=0.5, xanchor='center', yanchor='top'),
+                                       template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
 
+# Bottom plot callack
+@app.callback(Output('bottom-plot', 'figure'),
+              [Input('geojson', 'clickData'),
+               Input('year-slider', 'value'),
+               Input('bottom-plot-dropdown', 'value')])
+def update_chart_bottom(click_data, year_range, dropdown):
+    if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
+        country_code = click_data['properties']['ISO_A2']
+        
+        if dropdown == 'plot_pub_num':
+            pubs_per_year = get_pubs_per_year_per_country(country_code, year_range)
+            print(pubs_per_year)
+            fig = px.bar(pubs_per_year, y='Year', x='Number of articles', orientation='h', template='plotly_white')
+            fig.update_traces(marker_color='black')
+            return fig
+    return  go.Figure(layout=go.Layout(title=dict(text="Click on a country and select plot type",
+                                                  x=0.5,y=0.5, xanchor='center', yanchor='top'),
+                                       template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
+    
 @app.callback(Output('country-name', 'children'), Input('geojson', 'clickData'))
 def display_country_name(click_data):
     if click_data and 'properties' in click_data and 'NAME' in click_data['properties']:
