@@ -90,6 +90,17 @@ def openacces_per_year_per_country(country_code, year_range):
     
     return oa_per_year
 
+def av_authors_per_year_per_country(country_code, year_range):
+    query = "SELECT year_pubmed as Year, ROUND(AVG(authors_number),2) as 'Average number of authors' FROM publications\
+         WHERE majority_country = '{country}'\
+         AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+         GROUP BY year_pubmed\
+         ORDER BY year_pubmed DESC".format(country=country_code,
+                                           year_start=year_range[0],
+                                           year_end=year_range[1])
+    auth_per_year = pd.read_sql(query, conn)
+    return auth_per_year
+
 
 def get_color(value, min_val=0, max_val=200, cmap_name="Blues"):
     norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
@@ -310,7 +321,8 @@ app.layout = dbc.Container([
                 options=[
                     {"label": "No plot", "value": "no_plot"},
                     {"label": "Number of articles", "value": "plot_pub_num"},
-                    {"label": "Open access articles", "value": "plot_open_acc"}
+                    {"label": "Open access articles", "value": "plot_open_acc"},
+                    {"label": "Number of authors", "value": "plot_av_auth_num"}       
                 ],
                 clearable=False,
                 style={
@@ -396,12 +408,24 @@ def update_chart_top(click_data, year_range, dropdown):
             fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
                              tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
             fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
-            fig.for_each_trace(lambda trace: trace.update(hovertemplate=f"<span style='color:{'white' if trace.name == 'Open access (%)' else 'black'}'>"
+            fig.for_each_trace(lambda trace: trace.update(hovertemplate=f"<span style='color:{'white' if trace.name == 'Open access' else 'black'}'>"
                                                                         f"{trace.name}: %{{y}}%</span><extra></extra>"))  
             if oa_per_year.empty:
                 fig = empty_df_info()
             return fig
         
+        # Plot Average number of authors per year
+        if dropdown == 'plot_av_auth_num':
+            av_auth_per_year = av_authors_per_year_per_country(country_code, year_range)
+            fig = px.bar(av_auth_per_year, x='Year', y='Average number of authors', orientation='v', template='plotly_white')
+            fig.update_traces(marker_color='grey', width=0.5)
+            fig.update_layout(bargap=0.2, hoverlabel=dict(font=dict(color='white')))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            if av_auth_per_year.empty:
+                fig = empty_df_info()
+            return fig
         
     return  go.Figure(layout=go.Layout(title=dict(text="Click on a country and select plot type",
                                                   x=0.5,y=0.5, xanchor='center', yanchor='top'),
