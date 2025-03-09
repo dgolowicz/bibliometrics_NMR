@@ -52,11 +52,17 @@ def sum_collabs_in_years(x):
         return dict(sorted_result)
     else: 
         return {}
+    
 
+# return info if dataframe for plotting (top and bottom chart) is empty for the selected country:
+def empty_df_info():
+    return  go.Figure(layout=go.Layout(title=dict(text="No data available for this country in a selected year range",
+                                                    x=0.5,y=0.5, xanchor='center', yanchor='top'),
+                                        template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
+    
 
-# Optimized Query Function (Uses Persistent Connection)
 def get_pubs_per_year_per_country(country_code, year_range):
-    query = "SELECT year_pubmed as Year, COUNT(*) as 'Number of articles' FROM publications\
+    query = "SELECT year_pubmed as Year, COUNT(*) as 'Articles' FROM publications\
          WHERE majority_country = '{country}'\
          AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
          GROUP BY year_pubmed\
@@ -65,6 +71,24 @@ def get_pubs_per_year_per_country(country_code, year_range):
                                            year_end=year_range[1])
     pubs_per_year = pd.read_sql(query, conn)
     return pubs_per_year
+
+def openacces_per_year_per_country(country_code, year_range):
+         
+    query = "SELECT year_pubmed as Year, ROUND(CAST(SUM(is_open_access) AS FLOAT)*100 / COUNT(is_open_access),1) as 'Open access' FROM publications\
+            WHERE majority_country = '{country}'\
+            AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+            GROUP BY year_pubmed\
+            ORDER BY year_pubmed DESC".format(country=country_code,
+                                        year_start=year_range[0],
+                                        year_end=year_range[1])    
+
+    oa_per_year = pd.read_sql(query, conn)
+    if oa_per_year.empty:
+        return oa_per_year
+    else:
+        oa_per_year['Paid access'] = oa_per_year.apply(lambda x: 100 - x['Open access'], axis=1)
+    
+    return oa_per_year
 
 
 def get_color(value, min_val=0, max_val=200, cmap_name="Blues"):
@@ -285,7 +309,8 @@ app.layout = dbc.Container([
                 id="top-plot-dropdown",
                 options=[
                     {"label": "No plot", "value": "no_plot"},
-                    {"label": "Number of publications", "value": "plot_pub_num"}
+                    {"label": "Number of articles", "value": "plot_pub_num"},
+                    {"label": "Open access articles", "value": "plot_open_acc"}
                 ],
                 clearable=False,
                 style={
@@ -347,12 +372,37 @@ def update_chart_top(click_data, year_range, dropdown):
     if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
         country_code = click_data['properties']['ISO_A2']
         
+        # Plot number of articles per year
         if dropdown == 'plot_pub_num':
             pubs_per_year = get_pubs_per_year_per_country(country_code, year_range)
-            print(pubs_per_year)
-            fig = px.bar(pubs_per_year, y='Year', x='Number of articles', orientation='h', template='plotly_white')
-            fig.update_traces(marker_color='black')
+            fig = px.bar(pubs_per_year, x='Year', y='Articles', orientation='v', template='plotly_white')
+            fig.update_traces(marker_color='grey', width=0.5)
+            fig.update_layout(bargap=0.2, hoverlabel=dict(font=dict(color='white')))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            if pubs_per_year.empty:
+                fig = empty_df_info()
             return fig
+        
+        # Plot open access percentage per year
+        if dropdown == 'plot_open_acc':
+            oa_per_year = openacces_per_year_per_country(country_code, year_range)
+            fig = px.bar(oa_per_year, x='Year', y=['Open access', 'Paid access'], orientation='v', template='plotly_white',
+                         color_discrete_map={'Open access': 'black', 'Paid access': 'rgba(0, 0, 0, 0.1)'})
+            fig.update_traces(width=0.5)
+            fig.update_layout(yaxis_title='Articles (%)', bargap=0.2, hoverlabel=dict(font=dict(color='white')),
+                              legend=dict(title='', orientation='h', yanchor='top', y=1.1, xanchor='center', x=0.5))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            fig.for_each_trace(lambda trace: trace.update(hovertemplate=f"<span style='color:{'white' if trace.name == 'Open access (%)' else 'black'}'>"
+                                                                        f"{trace.name}: %{{y}}%</span><extra></extra>"))  
+            if oa_per_year.empty:
+                fig = empty_df_info()
+            return fig
+        
+        
     return  go.Figure(layout=go.Layout(title=dict(text="Click on a country and select plot type",
                                                   x=0.5,y=0.5, xanchor='center', yanchor='top'),
                                        template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
@@ -393,9 +443,6 @@ def store_min_papers(value):
     if value is None or value == '':
         return 100
     return value 
-
-
-
 
 @app.callback(
     Output('geojson', 'hideout'),
@@ -572,4 +619,4 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
 #     return []
 
 if __name__ == '__main__':
-    app.run_server(host='0.0.0.0', port=8080, debug=False)
+    app.run_server(host='0.0.0.0', port=8080, debug=True)

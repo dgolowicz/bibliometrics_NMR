@@ -37,5 +37,8 @@
     text-align: center !important;
     display: block;
 }
+.Select-placeholder {
+    color: rgba(255, 0, 0, 0.5) !important;
+}
 
 
