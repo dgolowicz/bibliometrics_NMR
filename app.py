@@ -40,19 +40,6 @@ def best_collabs(x):
     else:
         return 'No foreign affiliations'
 
-def sum_collabs_in_years(x):
-    if not x.empty:
-        result = defaultdict(int)
-        for d in x:
-            for key, value in d.items():
-                result[key] += value
-
-        sorted_result = dict(sorted(result.items(), key=lambda item: item[1], reverse=True))
-        
-        return dict(sorted_result)
-    else: 
-        return {}
-    
 
 # return info if dataframe for plotting (top and bottom chart) is empty for the selected country:
 def empty_df_info():
@@ -101,6 +88,46 @@ def av_authors_per_year_per_country(country_code, year_range):
     auth_per_year = pd.read_sql(query, conn)
     return auth_per_year
 
+def references_per_year_per_country(country_code, year_range):
+    query = "SELECT year_pubmed as Year, ROUND(AVG(n_references),2) as 'Average number of references' FROM publications\
+         WHERE majority_country = '{country}'\
+         AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+         GROUP BY year_pubmed\
+         ORDER BY year_pubmed DESC".format(country=country_code,
+                                           year_start=year_range[0],
+                                           year_end=year_range[1])
+    ref_per_year = pd.read_sql(query, conn)
+    return ref_per_year
+
+def countries_str_to_list(x):
+    lst = list(filter(None, x.replace("[", "")\
+                             .replace("]", "")\
+                             .replace("'", "")\
+                             .replace(" ", "")\
+                             .split(',')))
+    
+    return(lst)
+
+
+def foreign_collaborators_perc(selected_country, year_range): 
+    query = "SELECT year_pubmed as Year, GROUP_CONCAT(countries) AS all_countries\
+            FROM publications\
+            WHERE majority_country = '{country}'\
+            AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+            GROUP BY year_pubmed\
+            ORDER BY year_pubmed DESC".format(country=selected_country,
+                                           year_start=year_range[0],
+                                           year_end=year_range[1])
+            
+    df = pd.read_sql(query, conn)
+
+    df['all_countries'] = df['all_countries'].apply(lambda x: countries_str_to_list(x))
+    df['Home affiliations'] =  df['all_countries'].apply(lambda x: round(100*x.count(selected_country)/len(x),2))
+    df['Foreign affiliations'] = df['Home affiliations'].apply(lambda x: 100 - x)
+        
+    return df
+
+
 
 def get_color(value, min_val=0, max_val=200, cmap_name="Blues"):
     norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
@@ -114,7 +141,18 @@ def get_color(value, min_val=0, max_val=200, cmap_name="Blues"):
 #     rgba = cmap(norm(value))
 #     return mcolors.to_hex(rgba)
 
+def sum_collabs_in_years(x):
+    if not x.empty:
+        result = defaultdict(int)
+        for d in x:
+            for key, value in d.items():
+                result[key] += value
 
+        sorted_result = dict(sorted(result.items(), key=lambda item: item[1], reverse=True))
+        
+        return dict(sorted_result)
+    else: 
+        return {}
 
 def collabs_dict(x, country):
     lst = list(filter(None, x['all_countries'].replace("[", "")\
@@ -321,8 +359,10 @@ app.layout = dbc.Container([
                 options=[
                     {"label": "No plot", "value": "no_plot"},
                     {"label": "Number of articles", "value": "plot_pub_num"},
-                    {"label": "Open access articles", "value": "plot_open_acc"},
-                    {"label": "Number of authors", "value": "plot_av_auth_num"}       
+                    {"label": "Open access articles (%)", "value": "plot_open_acc"},
+                    {"label": "Number of authors", "value": "plot_av_auth_num"},
+                    {"label": "Number of references", "value": "plot_av_ref_num"},
+                    {"label": "Foreign affiliations (%)", "value": "plot_foreign_collabs_perc"}   
                 ],
                 clearable=False,
                 style={
@@ -427,9 +467,40 @@ def update_chart_top(click_data, year_range, dropdown):
                 fig = empty_df_info()
             return fig
         
+        # Plot Average number of references per year
+        if dropdown == 'plot_av_ref_num':
+            av_ref_per_year = references_per_year_per_country(country_code, year_range)
+            fig = px.bar(av_ref_per_year, x='Year', y='Average number of references', orientation='v', template='plotly_white')
+            fig.update_traces(marker_color='grey', width=0.5)
+            fig.update_layout(bargap=0.2, hoverlabel=dict(font=dict(color='white')))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            if av_ref_per_year.empty:
+                fig = empty_df_info()
+            return fig
+        
+        # Plot foreign affiliations percentage per year
+        if dropdown == 'plot_foreign_collabs_perc':
+            df = foreign_collaborators_perc(country_code, year_range)
+            fig = px.bar(df, x='Year', y=['Foreign affiliations', 'Home affiliations'], orientation='v', template='plotly_white',
+                         color_discrete_map={'Foreign affiliations': 'black', 'Home affiliations': 'rgba(0, 0, 0, 0.1)'})
+            fig.update_traces(width=0.5)
+            fig.update_layout(yaxis_title='Affiliations (%)', bargap=0.2, hoverlabel=dict(font=dict(color='white')),
+                              legend=dict(title='', orientation='h', yanchor='top', y=1.1, xanchor='center', x=0.5))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            fig.for_each_trace(lambda trace: trace.update(hovertemplate=f"<span style='color:{'white' if trace.name == 'Foreign affiliations' else 'black'}'>"
+                                                                        f"{trace.name}: %{{y}}%</span><extra></extra>"))  
+            if df.empty:
+                fig = empty_df_info()
+            return fig
+        
     return  go.Figure(layout=go.Layout(title=dict(text="Click on a country and select plot type",
                                                   x=0.5,y=0.5, xanchor='center', yanchor='top'),
                                        template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
+
 
 # Bottom plot callack
 @app.callback(Output('bottom-plot', 'figure'),
