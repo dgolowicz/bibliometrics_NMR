@@ -12,7 +12,7 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 #import dash_leaflet.express as dlx
 from dash_extensions.javascript import assign
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 
 
@@ -126,6 +126,45 @@ def foreign_collaborators_perc(selected_country, year_range):
     df['Foreign affiliations'] = df['Home affiliations'].apply(lambda x: 100 - x)
         
     return df
+
+def count_foreign_only(x,country,other_level=5):
+    '''function required by 'each_foreign_collaborator_perc' function'''
+    lst = list(filter(None, x.replace("[", "")\
+                             .replace("]", "")\
+                             .replace("'", "")\
+                             .replace(" ", "")\
+                             .split(',')))
+
+    #print(country)
+    foreign_countries= [x for x in lst if x != country]
+    counts = Counter(foreign_countries)
+    counts_perc = {x: round(100*counts[x]/sum(counts.values()),2) for x in counts.keys()}
+    sorted_counts= dict(sorted(counts_perc.items(), key=lambda item: item[1], reverse=True))
+    counts_reduced = {x: sorted_counts[x] for x in sorted_counts.keys() if sorted_counts[x] >= other_level}
+    counts_reduced['Other'] = sum([x for x in sorted_counts.values() if x < other_level])
+
+    return(counts_reduced)
+
+def each_foreign_collaborator_perc(selected_country, year_range):
+    '''Percentage of Foreign countries from all foreign affiliations for each year'''
+
+    query = "SELECT year_pubmed as Year, GROUP_CONCAT(countries) AS all_countries\
+            FROM publications\
+            WHERE majority_country = '{country}'\
+            AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+            GROUP BY year_pubmed\
+            ORDER BY year_pubmed DESC".format(country=selected_country,
+                                            year_start=year_range[0],
+                                            year_end=year_range[1])
+
+    df = pd.read_sql(query, conn)
+
+    df['all_countries'] = df['all_countries'].apply(lambda x: count_foreign_only(x, selected_country))
+    df['country'] = df['all_countries'].apply(lambda x: list(x.keys()))
+    df['value'] = df['all_countries'].apply(lambda x: list(x.values()))
+    df_exploded = df.explode(['country', 'value']).drop(columns=['all_countries'])
+    
+    return df_exploded
 
 
 
@@ -362,7 +401,8 @@ app.layout = dbc.Container([
                     {"label": "Open access articles (%)", "value": "plot_open_acc"},
                     {"label": "Number of authors", "value": "plot_av_auth_num"},
                     {"label": "Number of references", "value": "plot_av_ref_num"},
-                    {"label": "Foreign affiliations (%)", "value": "plot_foreign_collabs_perc"}   
+                    {"label": "Total foreign affiliations (%)", "value": "plot_foreign_collabs_perc"},
+                    {"label": "Foreign affiliation countries (%)", "value": "plot_foreign_collabs_countries_perc"}
                 ],
                 clearable=False,
                 style={
@@ -497,6 +537,39 @@ def update_chart_top(click_data, year_range, dropdown):
                 fig = empty_df_info()
             return fig
         
+        
+        # Plot foreign affiliations countries percentage per year
+        if dropdown == 'plot_foreign_collabs_countries_perc':
+            df = each_foreign_collaborator_perc(country_code, year_range)
+            
+            country_order=df.groupby('country')['value'].aggregate('sum').sort_values(ascending=False)
+            other_idx = [i for i, x in enumerate(country_order.index == 'Other') if x == True][0]
+            country_order2 = country_order.drop('Other')
+            country_order2 = pd.concat((country_order2,country_order.iloc[other_idx:other_idx+1])) # move 'Other' to the end
+            
+            default_colors = px.colors.qualitative.Alphabet  # color scheme
+            color_mapping = {}
+            # Assign colors to other countries dynamically
+            for i, country in enumerate(country_order2.index):
+                if country not in color_mapping:
+                    color_mapping[country] = default_colors[i % len(default_colors)]
+            
+            color_mapping['Other'] = 'black' # Assign black to 'Other'
+
+            fig = px.bar(df, x='Year', y='value', color='country', orientation='v',
+                         template='plotly_white', category_orders={"country": list(color_mapping.keys())},
+                         color_discrete_map=color_mapping)
+            
+            fig.update_traces(width=0.5)
+            fig.update_layout(yaxis_title='Foreign affiliations (%)', bargap=0.2)
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            
+            if df.empty:
+                fig = empty_df_info()
+            return fig
+
     return  go.Figure(layout=go.Layout(title=dict(text="Click on a country and select plot type",
                                                   x=0.5,y=0.5, xanchor='center', yanchor='top'),
                                        template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
