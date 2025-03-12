@@ -414,7 +414,15 @@ app.layout = dbc.Container([
                 placeholder='Select country-specific plot'),
             html.Div(
                 id='top-plot-container',
-                children=[dcc.Graph(id='top-plot', responsive=True, style={'width': '100%', 'height': '100%'})],
+                children=[dcc.Graph(id='top-plot', responsive=True, style={'width': '100%', 'height': '100%'},
+                                    config = {'toImageButtonOptions': {'format': 'png',
+                                                                       'filename': 'hr_plot',
+                                                                       'height': 1080,
+                                                                       'width': 1920,
+                                                                       'scale': 2},
+                                              'displaylogo': False,
+                                              'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+                                              "displayModeBar": True})],
                 style={'height': '400px', 'width': '100%', 'padding-bottom': '10px'}
             ),
             
@@ -558,13 +566,21 @@ def update_chart_top(click_data, year_range, dropdown):
 
             fig = px.bar(df, x='Year', y='value', color='country', orientation='v',
                          template='plotly_white', category_orders={"country": list(color_mapping.keys())},
-                         color_discrete_map=color_mapping)
+                         color_discrete_map=color_mapping, text='country')
+            
             
             fig.update_traces(width=0.5)
             fig.update_layout(yaxis_title='Foreign affiliations (%)', bargap=0.2)
             fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
                              tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
             fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            
+            #add annotation for downloading high-resolution plot
+            fig.update_layout(annotations=[dict(text="Download in high-resolution", 
+                        xref="paper", yref="paper",
+                        x=1.0, y=1.02, xanchor='right', yanchor='bottom',
+                        showarrow=False,
+                        font=dict(size=12, color="grey"))])
             
             if df.empty:
                 fig = empty_df_info()
