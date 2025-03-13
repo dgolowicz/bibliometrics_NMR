@@ -167,6 +167,19 @@ def each_foreign_collaborator_perc(selected_country, year_range):
     return df_exploded
 
 
+def top_journals_ranking(selected_country, year_range): 
+    query = "SELECT journal_title AS Journal, COUNT(*) as Articles\
+            FROM publications\
+            WHERE majority_country = '{country}'\
+            AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+            GROUP BY journal\
+            ORDER BY Articles DESC".format(country=selected_country,
+                                           year_start=year_range[0],
+                                           year_end=year_range[1])
+            
+    df = pd.read_sql(query, conn)
+    return df
+
 
 def get_color(value, min_val=0, max_val=200, cmap_name="Blues"):
     norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
@@ -402,7 +415,8 @@ app.layout = dbc.Container([
                     {"label": "Number of authors", "value": "plot_av_auth_num"},
                     {"label": "Number of references", "value": "plot_av_ref_num"},
                     {"label": "Total foreign affiliations (%)", "value": "plot_foreign_collabs_perc"},
-                    {"label": "Foreign affiliation countries (%)", "value": "plot_foreign_collabs_countries_perc"}
+                    {"label": "Foreign affiliation countries (%)", "value": "plot_foreign_collabs_countries_perc"},
+                    {"label": "Journals (top 20)", "value": "plot_top_journals"}
                 ],
                 clearable=False,
                 style={
@@ -585,6 +599,21 @@ def update_chart_top(click_data, year_range, dropdown):
             if df.empty:
                 fig = empty_df_info()
             return fig
+        
+        # Plot top 20 journals
+        if dropdown == 'plot_top_journals':
+            df = top_journals_ranking(country_code, year_range)
+            fig = px.bar(df.head(20), y='Journal', x='Articles', orientation='h', template='plotly_white')
+            fig.update_traces(marker_color='grey', width=0.5)
+            fig.update_layout(yaxis_title='', bargap=0.2, hoverlabel=dict(font=dict(color='white')),
+                              yaxis=dict(categoryorder='total ascending'),margin=dict(l=0, r=20, t=50, b=50))
+            fig.update_xaxes(title_font=dict(size=14),tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=10), tickfont=dict(size=10), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+
+            if df.empty:
+                fig = empty_df_info()
+            return fig
+        
 
     return  go.Figure(layout=go.Layout(title=dict(text="Click on a country and select plot type",
                                                   x=0.5,y=0.5, xanchor='center', yanchor='top'),
