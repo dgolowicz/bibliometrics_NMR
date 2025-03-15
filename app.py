@@ -250,7 +250,10 @@ def collabs_dict(x, country):
                                               .replace(" ", "")\
                                               .split(',')))
     
-    collabs = {x: lst.count(x) for x in lst if x != country}
+    foreign_countries= [x for x in lst if x != country]
+    collabs = dict(Counter(foreign_countries))
+    #collabs = {x: lst.count(x) for x in lst if x != country}
+    #print(collabs)
     sorted_collabs = dict(sorted(collabs.items(), key=lambda item: item[1], reverse=True))
     
     return(sorted_collabs)
@@ -271,9 +274,7 @@ def collaborators(selected_country, year_range):
     df = pd.read_sql(query, conn)
     #df['collabs'] = df.apply(lambda x: collabs_dict(x, selected_country), axis=1)
     collab_dict = df.apply(lambda x: collabs_dict(x, selected_country), axis=1)
-    print(collab_dict)  
     summed_collab_dict = sum_collabs_in_years(collab_dict)
-    print(summed_collab_dict)   
     max_collab = max(summed_collab_dict.values()) if summed_collab_dict else 1  # Avoid division by zero
         
     # Assign colors based on collaboration frequency
