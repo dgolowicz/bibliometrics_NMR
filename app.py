@@ -13,6 +13,7 @@ import matplotlib.colors as mcolors
 #import dash_leaflet.express as dlx
 from dash_extensions.javascript import assign
 from collections import defaultdict, Counter
+import dash.dash_table as dash_table
 
 
 
@@ -43,7 +44,7 @@ def best_collabs(x):
 
 # return info if dataframe for plotting (top and bottom chart) is empty for the selected country:
 def empty_df_info():
-    return  go.Figure(layout=go.Layout(title=dict(text="No data available for this country in a selected year range",
+    return  go.Figure(layout=go.Layout(title=dict(text='No data available for this country in a selected year range',
                                                     x=0.5,y=0.5, xanchor='center', yanchor='top'),
                                         template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
     
@@ -181,13 +182,44 @@ def top_journals_ranking(selected_country, year_range):
     return df
 
 
-def get_color(value, min_val=0, max_val=200, cmap_name="Blues"):
+def format_dccGraph(fig):
+    return dcc.Graph(id='top-plot', responsive=True, style={'width': '100%', 'height': '100%'},
+                     figure=fig, config = {'toImageButtonOptions': {'format': 'png',
+                                                                        'filename': 'hr_plot',
+                                                                        'height': 1080,
+                                                                        'width': 1920,
+                                                                        'scale': 2},
+                                               'displaylogo': False,
+                                               'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+                                               'displayModeBar': True})
+    
+
+def top_cited_papers(selected_country, year_range): 
+    query = "SELECT title_pubmed AS Title, cit_per_year_to2024 AS 'Average annual citation rate', pmid as PMID, year_pubmed as 'Publication year'\
+            FROM publications\
+            WHERE majority_country = '{country}'\
+            AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+            ORDER BY cit_per_year_to2024 DESC\
+            LIMIT 10\
+            ".format(country=selected_country,
+                     year_start=year_range[0],
+                     year_end=year_range[1])
+            
+    df = pd.read_sql(query, conn)
+    df['Average annual citation rate'] = df['Average annual citation rate'].apply(lambda x: round(x,2))
+    return df
+
+
+########################## FUNCTIONS FOR GEOJSON MAP ##########################
+
+
+def get_color(value, min_val=0, max_val=200, cmap_name='Blues'):
     norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
     cmap = cm.get_cmap(cmap_name)  # Use cm.get_cmap() to retrieve the colormap
     rgba = cmap(norm(value))
     return mcolors.to_hex(rgba)
 
-# def get_color_avg_authors(value, min_val=0, max_val=200, cmap_name="RdBu"):
+# def get_color_avg_authors(value, min_val=0, max_val=200, cmap_name='RdBu'):
 #     norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
 #     cmap = cm.get_cmap(cmap_name)  # Use cm.get_cmap() to retrieve the colormap
 #     rgba = cmap(norm(value))
@@ -242,10 +274,10 @@ def collaborators(selected_country, year_range):
     # Assign colors based on collaboration frequency
     for country_code, freq in summed_collab_dict.items():
         styles[country_code] = {
-            "fillColor": get_color(freq, min_val=0, max_val=max_collab, cmap_name="Blues"),
-            "fillOpacity": 0.8, 
-            "color": "black",
-            "weight": 1
+            'fillColor': get_color(freq, min_val=0, max_val=max_collab, cmap_name='Blues'),
+            'fillOpacity': 0.8, 
+            'color': 'black',
+            'weight': 1
         }
     #print(styles)
     return styles, max_collab, summed_collab_dict
@@ -269,11 +301,11 @@ def avg_number_authors(year_range, min_records):
     # Assign colors based on number of average number of authors
     for country_code, av_authors in result_dict.items():
         styles[country_code] = {
-            "fillColor": get_color(av_authors, min_val=min_av_authors,
-                                   max_val=max_av_authors, cmap_name="Blues"),
-            "fillOpacity": 0.8, 
-            "color": "black",
-            "weight": 1
+            'fillColor': get_color(av_authors, min_val=min_av_authors,
+                                   max_val=max_av_authors, cmap_name='Blues'),
+            'fillOpacity': 0.8, 
+            'color': 'black',
+            'weight': 1
         }
     print(min_records)
     return styles, min_av_authors, max_av_authors, result_dict
@@ -297,11 +329,11 @@ def avg_number_references(year_range, min_records):
     # Assign colors based on number of average number of authors
     for country_code, av_references in result_dict.items():
         styles[country_code] = {
-            "fillColor": get_color(av_references, min_val=min_av_references,
-                                   max_val=max_av_references, cmap_name="Blues"),
-            "fillOpacity": 0.8, 
-            "color": "black",
-            "weight": 1
+            'fillColor': get_color(av_references, min_val=min_av_references,
+                                   max_val=max_av_references, cmap_name='Blues'),
+            'fillOpacity': 0.8, 
+            'color': 'black',
+            'weight': 1
         }
     print(min_records)
     return styles, min_av_references, max_av_references, result_dict
@@ -326,16 +358,22 @@ def open_access_perc(year_range, min_records):
     # Assign colors based on number of average number of authors
     for country_code, oa_perc in result_dict.items():
         styles[country_code] = {
-            "fillColor": get_color(oa_perc, min_val=0,
-                                   max_val=100, cmap_name="RdBu"),
-            "fillOpacity": 0.8, 
-            "color": "black",
-            "weight": 1
+            'fillColor': get_color(oa_perc, min_val=0,
+                                   max_val=100, cmap_name='RdBu'),
+            'fillOpacity': 0.8, 
+            'color': 'black',
+            'weight': 1
         }
     return styles, result_dict
 
+
+    
+    
+    
+
+
 # Path to the preloaded database
-DB_FILE = "data.db"
+DB_FILE = 'data.db'
 
 # Load GeoJSON data (still needed)
 with open('./maps/world.geojson') as f:
@@ -346,7 +384,7 @@ conn = sqlite3.connect(DB_FILE, check_same_thread=False)
 cursor = conn.cursor()
 
 # Create Index for Faster Queries (Only Run Once)
-cursor.execute("CREATE INDEX IF NOT EXISTS idx_year_pubmed ON publications(year_pubmed);")
+cursor.execute('CREATE INDEX IF NOT EXISTS idx_year_pubmed ON publications(year_pubmed);')
 conn.commit()  # Save changes
 
 
@@ -359,24 +397,24 @@ app.layout = dbc.Container([
     dbc.Row([
         
         dbc.Col([
-            dcc.Store(id="stored-min-papers", data=100),
+            dcc.Store(id='stored-min-papers', data=100),
             dcc.Dropdown(
-                id="metric-dropdown",
+                id='metric-dropdown',
                 options=[
-                    {"label": "No coloring", "value": "nocolors"},
-                    {"label": "Collaborators (updates when selecting a country)", "value": "collabs"},
-                    {"label": "Average number of authors", "value": "avg_authors"},
-                    {"label": "Open Access (percent)", "value": "open_access"},
-                    {"label": "Average number of references", "value": "avg_references"}
+                    {'label': 'No coloring', 'value': 'nocolors'},
+                    {'label': 'Collaborators (updates when selecting a country)', 'value': 'collabs'},
+                    {'label': 'Average number of authors', 'value': 'avg_authors'},
+                    {'label': 'Open Access (percent)', 'value': 'open_access'},
+                    {'label': 'Average number of references', 'value': 'avg_references'}
                 ],
                 clearable=False,
                 style={
-                    "textAlign": "center",
-                    "width": "100%",
-                    "margin": "auto",
-                    "display": "block"
+                    'textAlign': 'center',
+                    'width': '100%',
+                    'margin': 'auto',
+                    'display': 'block'
                 },
-                placeholder="Select metrics for coloring the map"),
+                placeholder='Select metrics for coloring the map'),
             html.Div(id='country-name',
                      style={'textAlign': 'center', 'fontSize': '24px', 'padding': '10px', 'backgroundColor': '#f0f0f0'},
                      children='Click on a country to see its name'),
@@ -385,11 +423,11 @@ app.layout = dbc.Container([
                      children='\u00A0'),
             dl.Map(center=[20, 0], zoom=2, attributionControl=False, children=[
                 dl.GeoJSON(data=countries,
-                           id="geojson",
+                           id='geojson',
                            style=style_handle,  # use the dynamic style function
                            hoverStyle=dict(weight=3, color='red'),
                            hideout=dict(styles={})),  # initial empty styles mapping
-                dl.LayerGroup(id="colorbar-layer")
+                dl.LayerGroup(id='colorbar-layer')
                 ], style={'height': '700px', 'width': '100%'}),
                 html.Div(id='extra-info',style={'textAlign': 'center', 'fontSize': '14px', 'padding': '10px','backgroundColor': '#f0f0f0'},
                         children=[html.Span(id='info-text', children='\u00A0'),  # Placeholder text
@@ -407,51 +445,53 @@ app.layout = dbc.Container([
         
         dbc.Col(
             [dcc.Dropdown(
-                id="top-plot-dropdown",
+                id='top-plot-dropdown',
                 options=[
-                    {"label": "No plot", "value": "no_plot"},
-                    {"label": "Number of articles", "value": "plot_pub_num"},
-                    {"label": "Open access articles (%)", "value": "plot_open_acc"},
-                    {"label": "Number of authors", "value": "plot_av_auth_num"},
-                    {"label": "Number of references", "value": "plot_av_ref_num"},
-                    {"label": "Total foreign affiliations (%)", "value": "plot_foreign_collabs_perc"},
-                    {"label": "Foreign affiliation countries (%)", "value": "plot_foreign_collabs_countries_perc"},
-                    {"label": "Journals (top 20)", "value": "plot_top_journals"}
+                    {'label': 'No plot', 'value': 'no_plot'},
+                    {'label': 'Number of articles', 'value': 'plot_pub_num'},
+                    {'label': 'Open access articles (%)', 'value': 'plot_open_acc'},
+                    {'label': 'Number of authors', 'value': 'plot_av_auth_num'},
+                    {'label': 'Number of references', 'value': 'plot_av_ref_num'},
+                    {'label': 'Total foreign affiliations (%)', 'value': 'plot_foreign_collabs_perc'},
+                    {'label': 'Foreign affiliation countries (%)', 'value': 'plot_foreign_collabs_countries_perc'},
+                    {'label': 'Journals (top 15)', 'value': 'plot_top_journals'},
+                    {'label': 'Top Articles (citations/year)', 'value': 'table_top_articles'}
                 ],
                 clearable=False,
                 style={
-                    "textAlign": "center",
-                    "width": "100%",
-                    "margin": "auto",
-                    "display": "block"
+                    'textAlign': 'center',
+                    'width': '100%',
+                    'margin': 'auto',
+                    'display': 'block'
                 },
                 placeholder='Select country-specific plot'),
             html.Div(
                 id='top-plot-container',
-                children=[dcc.Graph(id='top-plot', responsive=True, style={'width': '100%', 'height': '100%'},
-                                    config = {'toImageButtonOptions': {'format': 'png',
-                                                                       'filename': 'hr_plot',
-                                                                       'height': 1080,
-                                                                       'width': 1920,
-                                                                       'scale': 2},
-                                              'displaylogo': False,
-                                              'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
-                                              "displayModeBar": True})],
+                children=[],
+                # children=[dcc.Graph(id='top-plot', responsive=True, style={'width': '100%', 'height': '100%'},
+                #                     config = {'toImageButtonOptions': {'format': 'png',
+                #                                                        'filename': 'hr_plot',
+                #                                                        'height': 1080,
+                #                                                        'width': 1920,
+                #                                                        'scale': 2},
+                #                               'displaylogo': False,
+                #                               'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+                #                               'displayModeBar': True})],
                 style={'height': '400px', 'width': '100%', 'padding-bottom': '10px'}
             ),
             
             dcc.Dropdown(
-                id="bottom-plot-dropdown",
+                id='bottom-plot-dropdown',
                 options=[
-                    {"label": "No coloring", "value": "nocolors"},
-                    {"label": "Collaborators (updates when selecting a country)", "value": "collabs"}
+                    {'label': 'No coloring', 'value': 'nocolors'},
+                    {'label': 'Collaborators (updates when selecting a country)', 'value': 'collabs'}
                 ],
                 clearable=False,
                 style={
-                    "textAlign": "center",
-                    "width": "100%",
-                    "margin": "auto",
-                    "display": "block"
+                    'textAlign': 'center',
+                    'width': '100%',
+                    'margin': 'auto',
+                    'display': 'block'
                 },
                 placeholder='Select country-specific plot'),
             html.Div(
@@ -471,14 +511,14 @@ app.layout = dbc.Container([
                 step=1,
                 marks={i: str(i) for i in range(2000, 2024+1, 2)},  # every 2 years
                 value=[2000, 2024],  # Default
-                tooltip={"placement": "bottom", "always_visible": True, "style": {"color": "White", "fontSize": "18px"}},
+                tooltip={'placement': 'bottom', 'always_visible': True, 'style': {'color': 'White', 'fontSize': '18px'}},
             )
         ], width=28)
     ], style={'padding': '20px'})
 ], fluid=True)    
 
 # Top plot callack
-@app.callback(Output('top-plot', 'figure'),
+@app.callback(Output('top-plot-container', 'children'),
               [Input('geojson', 'clickData'),
                Input('year-slider', 'value'),
                Input('top-plot-dropdown', 'value')])
@@ -497,7 +537,7 @@ def update_chart_top(click_data, year_range, dropdown):
             fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
             if pubs_per_year.empty:
                 fig = empty_df_info()
-            return fig
+            return format_dccGraph(fig)
         
         # Plot open access percentage per year
         if dropdown == 'plot_open_acc':
@@ -514,7 +554,7 @@ def update_chart_top(click_data, year_range, dropdown):
                                                                         f"{trace.name}: %{{y}}%</span><extra></extra>"))  
             if oa_per_year.empty:
                 fig = empty_df_info()
-            return fig
+            return format_dccGraph(fig)
         
         # Plot Average number of authors per year
         if dropdown == 'plot_av_auth_num':
@@ -527,7 +567,7 @@ def update_chart_top(click_data, year_range, dropdown):
             fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
             if av_auth_per_year.empty:
                 fig = empty_df_info()
-            return fig
+            return format_dccGraph(fig)
         
         # Plot Average number of references per year
         if dropdown == 'plot_av_ref_num':
@@ -540,7 +580,7 @@ def update_chart_top(click_data, year_range, dropdown):
             fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
             if av_ref_per_year.empty:
                 fig = empty_df_info()
-            return fig
+            return format_dccGraph(fig)
         
         # Plot foreign affiliations percentage per year
         if dropdown == 'plot_foreign_collabs_perc':
@@ -557,7 +597,7 @@ def update_chart_top(click_data, year_range, dropdown):
                                                                         f"{trace.name}: %{{y}}%</span><extra></extra>"))  
             if df.empty:
                 fig = empty_df_info()
-            return fig
+            return format_dccGraph(fig)
         
         
         # Plot foreign affiliations countries percentage per year
@@ -579,7 +619,7 @@ def update_chart_top(click_data, year_range, dropdown):
             color_mapping['Other'] = 'black' # Assign black to 'Other'
 
             fig = px.bar(df, x='Year', y='value', color='country', orientation='v',
-                         template='plotly_white', category_orders={"country": list(color_mapping.keys())},
+                         template='plotly_white', category_orders={'country': list(color_mapping.keys())},
                          color_discrete_map=color_mapping, text='country')
             
             
@@ -590,20 +630,20 @@ def update_chart_top(click_data, year_range, dropdown):
             fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
             
             #add annotation for downloading high-resolution plot
-            fig.update_layout(annotations=[dict(text="Download in high-resolution", 
-                        xref="paper", yref="paper",
+            fig.update_layout(annotations=[dict(text='Download in high-resolution', 
+                        xref='paper', yref='paper',
                         x=1.0, y=1.02, xanchor='right', yanchor='bottom',
                         showarrow=False,
-                        font=dict(size=12, color="grey"))])
+                        font=dict(size=12, color='grey'))])
             
             if df.empty:
                 fig = empty_df_info()
-            return fig
+            return format_dccGraph(fig)
         
-        # Plot top 20 journals
+        # Plot top 15 journals
         if dropdown == 'plot_top_journals':
             df = top_journals_ranking(country_code, year_range)
-            fig = px.bar(df.head(20), y='Journal', x='Articles', orientation='h', template='plotly_white')
+            fig = px.bar(df.head(15), y='Journal', x='Articles', orientation='h', template='plotly_white')
             fig.update_traces(marker_color='grey', width=0.5)
             fig.update_layout(yaxis_title='', bargap=0.2, hoverlabel=dict(font=dict(color='white')),
                               yaxis=dict(categoryorder='total ascending'),margin=dict(l=0, r=20, t=50, b=50))
@@ -612,12 +652,44 @@ def update_chart_top(click_data, year_range, dropdown):
 
             if df.empty:
                 fig = empty_df_info()
-            return fig
+            return format_dccGraph(fig)
+        
+        
+        # Table with top articles
+        if dropdown == 'table_top_articles':
+            df = top_cited_papers(country_code, year_range)
+            return dash_table.DataTable(
+            columns=[{'name': col, 'id': col, 'presentation': 'markdown'} for col in df.columns],
+            data=df.to_dict('records'),
+            style_table={'width': '100%', 'height': '400px', 'overflowX': 'auto'},
+            style_header={'backgroundColor': 'grey', 'color': 'white', 'fontSize': 14},
+            style_data_conditional=[
+                    {'if': {'column_id': 'Title'}, 'width': '70%'},
+                    {'if': {'column_id': 'Average annual citation rate'}, 'width': '10%', 'fontWeight': 'bold'},
+                    {'if': {'column_id': 'PMID'}, 'width': '10%'},
+                    {'if': {'column_id': 'Publication year'}, 'width': '10%'}],
+            style_data={'fontSize': 12},
+            style_cell={'textAlign': 'center', 'whiteSpace': 'normal', 'overflow': 'hidden',
+                        'textOverflow': 'ellipsis','maxWidth': '200px'}
+            )
+
+            # if df.empty:
+            #     fig = empty_df_info()
+            # return format_dccGraph(fig)
+
+
         
 
-    return  go.Figure(layout=go.Layout(title=dict(text="Click on a country and select plot type",
-                                                  x=0.5,y=0.5, xanchor='center', yanchor='top'),
-                                       template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
+    # return  go.Figure(layout=go.Layout(title=dict(text='Click on a country and select plot type',
+    #                                               x=0.5,y=0.5, xanchor='center', yanchor='top'),
+    #                                    template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
+    return format_dccGraph(go.Figure(layout=go.Layout(
+        title=dict(text='Click on a country and select plot type', x=0.5, y=0.5, 
+                    xanchor='center', yanchor='top'),
+        template='plotly_white',
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False)
+    )))
 
 
 # Bottom plot callack
@@ -635,21 +707,21 @@ def update_chart_bottom(click_data, year_range, dropdown):
             fig = px.bar(pubs_per_year, y='Year', x='Number of articles', orientation='h', template='plotly_white')
             fig.update_traces(marker_color='black')
             return fig
-    return  go.Figure(layout=go.Layout(title=dict(text="Click on a country and select plot type",
+    return  go.Figure(layout=go.Layout(title=dict(text='Click on a country and select plot type',
                                                   x=0.5,y=0.5, xanchor='center', yanchor='top'),
                                        template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
     
 @app.callback(Output('country-name', 'children'), Input('geojson', 'clickData'))
 def display_country_name(click_data):
     if click_data and 'properties' in click_data and 'NAME' in click_data['properties']:
-        return f"{click_data['properties']['NAME']}"
-    return "Click on a country to see its name."
+        return f'{click_data['properties']['NAME']}'
+    return 'Click on a country to see its name.'
 
 # pop up window for setting lower limit of publications to qualify country
 # for calculation of average number of authors
 @app.callback(
-    Output("stored-min-papers", "data"),
-    Input({'type': 'dynamic-input', 'id': 'min-papers-input'}, "value"),
+    Output('stored-min-papers', 'data'),
+    Input({'type': 'dynamic-input', 'id': 'min-papers-input'}, 'value'),
     prevent_initial_call=True
 )
 def store_min_papers(value):
@@ -680,10 +752,10 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
 
         # Set the clicked country's style (always applied)
         new_styles[selected_country] = {
-            "fillColor": "red",  # Highlight clicked country
-            "fillOpacity": 0.5,
-            "color": "black",
-            "weight": 2.5
+            'fillColor': 'red',  # Highlight clicked country
+            'fillOpacity': 0.5,
+            'color': 'black',
+            'weight': 2.5
         }
         #COLLABORATORS MAP
         if dropdown == 'collabs':
@@ -691,13 +763,13 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
             new_styles.update(collab_styles)  # Merge the collaboration styles
             
             colorbar = dl.Colorbar(
-                id="colorbar",
+                id='colorbar',
                 width=20,
                 height=550,
-                colorscale="Blues",
+                colorscale='Blues',
                 min=0,
                 max=max_collab,
-                position="bottomleft",
+                position='bottomleft',
                 nTicks = 5,
             )
 
@@ -711,19 +783,19 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
 
 
         colorbar = dl.Colorbar(
-            id="colorbar",
+            id='colorbar',
             width=20,
             height=550,
-            colorscale="Blues",
+            colorscale='Blues',
             min=int(min_avg_authors),
             max=int(max_avg_authors) + 1,
-            position="bottomleft",
+            position='bottomleft',
             nTicks=int(max_avg_authors) + 2
         )
 
         # Display the input field for 'avg_authors'
         extra_info = html.Span([
-            "Include countries with at least ",
+            'Include countries with at least ',
             dcc.Input(
                 id={'type': 'dynamic-input', 'id': 'min-papers-input'},
                 type='number',
@@ -732,7 +804,7 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
                 value=min_papers_input,
                 style={'display': 'inline-block', 'width': '60px', 'margin': '0 5px'}
             ),
-            " publications in a selected years range (confirm by pressing enter)"
+            ' publications in a selected years range (confirm by pressing enter)'
         ])
         
         # Display the top extra info
@@ -747,19 +819,19 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
         new_styles.update(avg_references_styles)
 
         colorbar = dl.Colorbar(
-            id="colorbar",
+            id='colorbar',
             width=20,
             height=550,
-            colorscale="Blues",
+            colorscale='Blues',
             min=int(min_avg_references),
             max=int(max_avg_references) + 1,
-            position="bottomleft",
+            position='bottomleft',
             nTicks=10
         )
 
         # Display the input field for 'avg_authors'
         extra_info = html.Span([
-            "Include countries with at least ",
+            'Include countries with at least ',
             dcc.Input(
                 id={'type': 'dynamic-input', 'id': 'min-papers-input'},
                 type='number',
@@ -768,7 +840,7 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
                 value=min_papers_input,
                 style={'display': 'inline-block', 'width': '60px', 'margin': '0 5px'}
             ),
-            " publications in a selected years range (confirm by pressing enter)"
+            ' publications in a selected years range (confirm by pressing enter)'
         ])
         
         # Display the top extra info
@@ -784,19 +856,19 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
         new_styles.update(oa_styles)
 
         colorbar = dl.Colorbar(
-            id="colorbar",
+            id='colorbar',
             width=20,
             height=550,
-            colorscale="RdBu",
+            colorscale='RdBu',
             min=0,
             max=100,
-            position="bottomleft",
+            position='bottomleft',
             nTicks=11
         )
 
         # Display the input field for 'avg_authors'
         extra_info = html.Span([
-            "Include countries with at least ",
+            'Include countries with at least ',
             dcc.Input(
                 id={'type': 'dynamic-input', 'id': 'min-papers-input'},
                 type='number',
@@ -805,7 +877,7 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
                 value=min_papers_input,
                 style={'display': 'inline-block', 'width': '60px', 'margin': '0 5px'}
             ),
-            " publications in a selected years range (confirm by pressing enter)"
+            ' publications in a selected years range (confirm by pressing enter)'
         ])
         
         # Display the top extra info
@@ -814,7 +886,7 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
         except (NameError, KeyError):
             extra_info_top = '\u00A0'
 
-    return {"styles": new_styles}, colorbar, extra_info, extra_info_top
+    return {'styles': new_styles}, colorbar, extra_info, extra_info_top
 
 
 
