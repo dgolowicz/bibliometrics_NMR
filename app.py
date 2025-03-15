@@ -227,14 +227,19 @@ def get_color(value, min_val=0, max_val=200, cmap_name='Blues'):
 
 def sum_collabs_in_years(x):
     if not x.empty:
-        result = defaultdict(int)
-        for d in x:
-            for key, value in d.items():
-                result[key] += value
+        result = sum((Counter(d) for d in x), Counter())
+        result_dict = dict(result)
+        return result_dict
+    
+        # SLOWER METHOD
+        # result = defaultdict(int)
+        # for d in x:
+        #     for key, value in d.items():
+        #         result[key] += value
 
-        sorted_result = dict(sorted(result.items(), key=lambda item: item[1], reverse=True))
+        # sorted_result = dict(sorted(result.items(), key=lambda item: item[1], reverse=True))
         
-        return dict(sorted_result)
+        # return dict(sorted_result)
     else: 
         return {}
 
@@ -266,9 +271,9 @@ def collaborators(selected_country, year_range):
     df = pd.read_sql(query, conn)
     #df['collabs'] = df.apply(lambda x: collabs_dict(x, selected_country), axis=1)
     collab_dict = df.apply(lambda x: collabs_dict(x, selected_country), axis=1)
-    
+    print(collab_dict)  
     summed_collab_dict = sum_collabs_in_years(collab_dict)
-       
+    print(summed_collab_dict)   
     max_collab = max(summed_collab_dict.values()) if summed_collab_dict else 1  # Avoid division by zero
         
     # Assign colors based on collaboration frequency
