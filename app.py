@@ -28,6 +28,10 @@ function(feature, context){
 }
 """)
 
+#########################################
+### FUNCTIONS ###
+#########################################
+
 def best_collabs(x):
     nmax = len(list(x.items()))
     if nmax >= 5:
@@ -88,6 +92,22 @@ def av_authors_per_year_per_country(country_code, year_range):
                                            year_end=year_range[1])
     auth_per_year = pd.read_sql(query, conn)
     return auth_per_year
+
+def aacr_per_year_per_country(country_code, year_range):
+    query = "SELECT year_pubmed as 'Publication year', cited_by_count AS citations\
+            FROM publications\
+            WHERE majority_country = '{country}'\
+            AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
+            ORDER BY year_pubmed DESC".format(country=country_code,
+                                           year_start=year_range[0],
+                                           year_end=year_range[1])
+    df = pd.read_sql(query, conn)
+    
+    
+    df['Years_duration'] = df['Publication year'].apply(lambda x: 2025-x)
+    df = df.groupby(by='Publication year',as_index=False).sum()
+    df['Average annual citation rate'] = df['citations'] / df['Years_duration']
+    return df
 
 def references_per_year_per_country(country_code, year_range):
     query = "SELECT year_pubmed as Year, ROUND(AVG(n_references),2) as 'Average number of references' FROM publications\
@@ -195,7 +215,7 @@ def format_dccGraph(fig):
     
 
 def top_cited_papers(selected_country, year_range): 
-    query = "SELECT title_pubmed AS Title, cit_per_year_to2024 AS 'Average annual citation rate', pmid as PMID, year_pubmed as 'Publication year'\
+    query = "SELECT title_pubmed AS Title, cit_per_year_to2024 AS 'Annual citation rate', pmid as PMID, year_pubmed as 'Year'\
             FROM publications\
             WHERE majority_country = '{country}'\
             AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
@@ -206,7 +226,7 @@ def top_cited_papers(selected_country, year_range):
                      year_end=year_range[1])
             
     df = pd.read_sql(query, conn)
-    df['Average annual citation rate'] = df['Average annual citation rate'].apply(lambda x: round(x,2))
+    df['Annual citation rate'] = df['Annual citation rate'].apply(lambda x: round(x,2))
     return df
 
 
@@ -375,7 +395,9 @@ def open_access_perc(year_range, min_records):
 
     
     
-    
+#########################################
+### CONNECT DB ###
+#########################################    
 
 
 # Path to the preloaded database
@@ -392,6 +414,11 @@ cursor = conn.cursor()
 # Create Index for Faster Queries (Only Run Once)
 cursor.execute('CREATE INDEX IF NOT EXISTS idx_year_pubmed ON publications(year_pubmed);')
 conn.commit()  # Save changes
+
+
+#########################################
+### APP SKELETON ###
+#########################################  
 
 
 # Initialize Dash App
@@ -460,8 +487,9 @@ app.layout = dbc.Container([
                     {'label': 'Number of references', 'value': 'plot_av_ref_num'},
                     {'label': 'Total foreign affiliations (%)', 'value': 'plot_foreign_collabs_perc'},
                     {'label': 'Foreign affiliation countries (%)', 'value': 'plot_foreign_collabs_countries_perc'},
-                    {'label': 'Journals (top 15)', 'value': 'plot_top_journals'},
-                    {'label': 'Top Articles (citations/year)', 'value': 'table_top_articles'}
+                    {'label': 'Most popular journals', 'value': 'plot_top_journals'},
+                    {'label': dcc.Markdown('Most frequently cited articles<sup>*as of Mar 2025</sup>',dangerously_allow_html=True), 'value': 'table_top_articles'},
+                    {'label': 'Average annual citation rate', 'value': 'plot_aacr'},
                 ],
                 clearable=False,
                 style={
@@ -474,23 +502,22 @@ app.layout = dbc.Container([
             html.Div(
                 id='top-plot-container',
                 children=[],
-                # children=[dcc.Graph(id='top-plot', responsive=True, style={'width': '100%', 'height': '100%'},
-                #                     config = {'toImageButtonOptions': {'format': 'png',
-                #                                                        'filename': 'hr_plot',
-                #                                                        'height': 1080,
-                #                                                        'width': 1920,
-                #                                                        'scale': 2},
-                #                               'displaylogo': False,
-                #                               'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
-                #                               'displayModeBar': True})],
                 style={'height': '400px', 'width': '100%', 'padding-bottom': '10px'}
             ),
             
             dcc.Dropdown(
                 id='bottom-plot-dropdown',
                 options=[
-                    {'label': 'No coloring', 'value': 'nocolors'},
-                    {'label': 'Collaborators (updates when selecting a country)', 'value': 'collabs'}
+                    {'label': 'No plot', 'value': 'no_plot'},
+                    {'label': 'Number of articles', 'value': 'plot_pub_num'},
+                    {'label': 'Open access articles (%)', 'value': 'plot_open_acc'},
+                    {'label': 'Number of authors', 'value': 'plot_av_auth_num'},
+                    {'label': 'Number of references', 'value': 'plot_av_ref_num'},
+                    {'label': 'Total foreign affiliations (%)', 'value': 'plot_foreign_collabs_perc'},
+                    {'label': 'Foreign affiliation countries (%)', 'value': 'plot_foreign_collabs_countries_perc'},
+                    {'label': 'Most popular journals', 'value': 'plot_top_journals'},
+                    {'label': dcc.Markdown('Most frequently cited articles<sup>*as of Mar 2025</sup>',dangerously_allow_html=True), 'value': 'table_top_articles'},
+                    {'label': 'Average annual citation rate', 'value': 'plot_aacr'},
                 ],
                 clearable=False,
                 style={
@@ -502,8 +529,8 @@ app.layout = dbc.Container([
                 placeholder='Select country-specific plot'),
             html.Div(
                 id='bottom-plot-container',
-                children=[dcc.Graph(id='bottom-plot', responsive=True, style={'width': '100%', 'height': '100%'})],
-                style={'height': '400px', 'width': '100%'}
+                children=[],
+                style={'height': '400px', 'width': '100%', 'padding-bottom': '10px'}
             )
             ],width=4),
     ]),
@@ -523,7 +550,11 @@ app.layout = dbc.Container([
     ], style={'padding': '20px'})
 ], fluid=True)    
 
-# Top plot callack
+
+#########################################
+### TOP PLOT CALLBACKS ###
+#########################################  
+
 @app.callback(Output('top-plot-container', 'children'),
               [Input('geojson', 'clickData'),
                Input('year-slider', 'value'),
@@ -664,31 +695,42 @@ def update_chart_top(click_data, year_range, dropdown):
         # Table with top articles
         if dropdown == 'table_top_articles':
             df = top_cited_papers(country_code, year_range)
-            return dash_table.DataTable(
+            df['PMID'] = df['PMID'].apply(lambda x: f'[{x}](https://pubmed.ncbi.nlm.nih.gov/{x}/)')
+            table = dash_table.DataTable(
             columns=[{'name': col, 'id': col, 'presentation': 'markdown'} for col in df.columns],
             data=df.to_dict('records'),
             style_table={'width': '100%', 'height': '400px', 'overflowX': 'auto'},
-            style_header={'backgroundColor': 'grey', 'color': 'white', 'fontSize': 14},
+            style_header={'backgroundColor': 'grey', 'color': 'white', 'fontSize': 10, 'textAlign': 'center'},
+            style_cell={'textAlign': 'left', 'whiteSpace': 'normal', 'overflow': 'hidden',
+                        'textOverflow': 'ellipsis','maxWidth': '200px', 'maxHeight': '100px'},
             style_data_conditional=[
                     {'if': {'column_id': 'Title'}, 'width': '70%'},
-                    {'if': {'column_id': 'Average annual citation rate'}, 'width': '10%', 'fontWeight': 'bold'},
+                    {'if': {'column_id': 'Annual citation rate'}, 'width': '10%', 'fontWeight': 'bold'},
                     {'if': {'column_id': 'PMID'}, 'width': '10%'},
-                    {'if': {'column_id': 'Publication year'}, 'width': '10%'}],
-            style_data={'fontSize': 12},
-            style_cell={'textAlign': 'center', 'whiteSpace': 'normal', 'overflow': 'hidden',
-                        'textOverflow': 'ellipsis','maxWidth': '200px'}
+                    {'if': {'column_id': 'Year'}, 'width': '10%',}],
+            style_data={'fontSize': 10}
             )
 
-            # if df.empty:
-            #     fig = empty_df_info()
-            # return format_dccGraph(fig)
+            if df.empty:
+                fig = empty_df_info()
+                return format_dccGraph(fig)
+            else:
+                return table
 
+        # Plot AACR
+        if dropdown == 'plot_aacr':
+            df = aacr_per_year_per_country(country_code, year_range)
+            fig = px.bar(df, x='Publication year', y='Average annual citation rate', orientation='v', template='plotly_white')
+            fig.update_traces(marker_color='grey', width=0.5)
+            fig.update_layout(bargap=0.2, hoverlabel=dict(font=dict(color='white')))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            if df.empty:
+                fig = empty_df_info()
+            return format_dccGraph(fig)
 
         
-
-    # return  go.Figure(layout=go.Layout(title=dict(text='Click on a country and select plot type',
-    #                                               x=0.5,y=0.5, xanchor='center', yanchor='top'),
-    #                                    template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
     return format_dccGraph(go.Figure(layout=go.Layout(
         title=dict(text='Click on a country and select plot type', x=0.5, y=0.5, 
                     xanchor='center', yanchor='top'),
@@ -698,24 +740,198 @@ def update_chart_top(click_data, year_range, dropdown):
     )))
 
 
-# Bottom plot callack
-@app.callback(Output('bottom-plot', 'figure'),
+#########################################
+### BOTTOM PLOT CALLBACKS ###
+#########################################  
+
+@app.callback(Output('bottom-plot-container', 'children'),
               [Input('geojson', 'clickData'),
                Input('year-slider', 'value'),
                Input('bottom-plot-dropdown', 'value')])
-def update_chart_bottom(click_data, year_range, dropdown):
+def update_chart_top(click_data, year_range, dropdown):
     if click_data and 'properties' in click_data and 'ISO_A2' in click_data['properties']:
         country_code = click_data['properties']['ISO_A2']
         
+        # Plot number of articles per year
         if dropdown == 'plot_pub_num':
             pubs_per_year = get_pubs_per_year_per_country(country_code, year_range)
-            print(pubs_per_year)
-            fig = px.bar(pubs_per_year, y='Year', x='Number of articles', orientation='h', template='plotly_white')
-            fig.update_traces(marker_color='black')
-            return fig
-    return  go.Figure(layout=go.Layout(title=dict(text='Click on a country and select plot type',
-                                                  x=0.5,y=0.5, xanchor='center', yanchor='top'),
-                                       template='plotly_white',xaxis=dict(visible=False),yaxis=dict(visible=False)))
+            fig = px.bar(pubs_per_year, x='Year', y='Articles', orientation='v', template='plotly_white')
+            fig.update_traces(marker_color='grey', width=0.5)
+            fig.update_layout(bargap=0.2, hoverlabel=dict(font=dict(color='white')))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            if pubs_per_year.empty:
+                fig = empty_df_info()
+            return format_dccGraph(fig)
+        
+        # Plot open access percentage per year
+        if dropdown == 'plot_open_acc':
+            oa_per_year = openacces_per_year_per_country(country_code, year_range)
+            fig = px.bar(oa_per_year, x='Year', y=['Open access', 'Paid access'], orientation='v', template='plotly_white',
+                         color_discrete_map={'Open access': 'black', 'Paid access': 'rgba(0, 0, 0, 0.1)'})
+            fig.update_traces(width=0.5)
+            fig.update_layout(yaxis_title='Articles (%)', bargap=0.2, hoverlabel=dict(font=dict(color='white')),
+                              legend=dict(title='', orientation='h', yanchor='top', y=1.1, xanchor='center', x=0.5))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            fig.for_each_trace(lambda trace: trace.update(hovertemplate=f"<span style='color:{'white' if trace.name == 'Open access' else 'black'}'>"
+                                                                        f"{trace.name}: %{{y}}%</span><extra></extra>"))  
+            if oa_per_year.empty:
+                fig = empty_df_info()
+            return format_dccGraph(fig)
+        
+        # Plot Average number of authors per year
+        if dropdown == 'plot_av_auth_num':
+            av_auth_per_year = av_authors_per_year_per_country(country_code, year_range)
+            fig = px.bar(av_auth_per_year, x='Year', y='Average number of authors', orientation='v', template='plotly_white')
+            fig.update_traces(marker_color='grey', width=0.5)
+            fig.update_layout(bargap=0.2, hoverlabel=dict(font=dict(color='white')))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            if av_auth_per_year.empty:
+                fig = empty_df_info()
+            return format_dccGraph(fig)
+        
+        # Plot Average number of references per year
+        if dropdown == 'plot_av_ref_num':
+            av_ref_per_year = references_per_year_per_country(country_code, year_range)
+            fig = px.bar(av_ref_per_year, x='Year', y='Average number of references', orientation='v', template='plotly_white')
+            fig.update_traces(marker_color='grey', width=0.5)
+            fig.update_layout(bargap=0.2, hoverlabel=dict(font=dict(color='white')))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            if av_ref_per_year.empty:
+                fig = empty_df_info()
+            return format_dccGraph(fig)
+        
+        # Plot foreign affiliations percentage per year
+        if dropdown == 'plot_foreign_collabs_perc':
+            df = foreign_collaborators_perc(country_code, year_range)
+            fig = px.bar(df, x='Year', y=['Foreign affiliations', 'Home affiliations'], orientation='v', template='plotly_white',
+                         color_discrete_map={'Foreign affiliations': 'black', 'Home affiliations': 'rgba(0, 0, 0, 0.1)'})
+            fig.update_traces(width=0.5)
+            fig.update_layout(yaxis_title='Affiliations (%)', bargap=0.2, hoverlabel=dict(font=dict(color='white')),
+                              legend=dict(title='', orientation='h', yanchor='top', y=1.1, xanchor='center', x=0.5))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            fig.for_each_trace(lambda trace: trace.update(hovertemplate=f"<span style='color:{'white' if trace.name == 'Foreign affiliations' else 'black'}'>"
+                                                                        f"{trace.name}: %{{y}}%</span><extra></extra>"))  
+            if df.empty:
+                fig = empty_df_info()
+            return format_dccGraph(fig)
+        
+        
+        # Plot foreign affiliations countries percentage per year
+        if dropdown == 'plot_foreign_collabs_countries_perc':
+            df = each_foreign_collaborator_perc(country_code, year_range)
+            
+            country_order=df.groupby('country')['value'].aggregate('sum').sort_values(ascending=False)
+            other_idx = [i for i, x in enumerate(country_order.index == 'Other') if x == True][0]
+            country_order2 = country_order.drop('Other')
+            country_order2 = pd.concat((country_order2,country_order.iloc[other_idx:other_idx+1])) # move 'Other' to the end
+            
+            default_colors = px.colors.qualitative.Alphabet  # color scheme
+            color_mapping = {}
+            # Assign colors to other countries dynamically
+            for i, country in enumerate(country_order2.index):
+                if country not in color_mapping:
+                    color_mapping[country] = default_colors[i % len(default_colors)]
+            
+            color_mapping['Other'] = 'black' # Assign black to 'Other'
+
+            fig = px.bar(df, x='Year', y='value', color='country', orientation='v',
+                         template='plotly_white', category_orders={'country': list(color_mapping.keys())},
+                         color_discrete_map=color_mapping, text='country')
+            
+            
+            fig.update_traces(width=0.5)
+            fig.update_layout(yaxis_title='Foreign affiliations (%)', bargap=0.2)
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            
+            #add annotation for downloading high-resolution plot
+            fig.update_layout(annotations=[dict(text='Download in high-resolution', 
+                        xref='paper', yref='paper',
+                        x=1.0, y=1.02, xanchor='right', yanchor='bottom',
+                        showarrow=False,
+                        font=dict(size=12, color='grey'))])
+            
+            if df.empty:
+                fig = empty_df_info()
+            return format_dccGraph(fig)
+        
+        # Plot top 15 journals
+        if dropdown == 'plot_top_journals':
+            df = top_journals_ranking(country_code, year_range)
+            fig = px.bar(df.head(15), y='Journal', x='Articles', orientation='h', template='plotly_white')
+            fig.update_traces(marker_color='grey', width=0.5)
+            fig.update_layout(yaxis_title='', bargap=0.2, hoverlabel=dict(font=dict(color='white')),
+                              yaxis=dict(categoryorder='total ascending'),margin=dict(l=0, r=20, t=50, b=50))
+            fig.update_xaxes(title_font=dict(size=14),tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=10), tickfont=dict(size=10), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+
+            if df.empty:
+                fig = empty_df_info()
+            return format_dccGraph(fig)
+        
+        
+        # Table with top articles
+        if dropdown == 'table_top_articles':
+            df = top_cited_papers(country_code, year_range)
+            df['PMID'] = df['PMID'].apply(lambda x: f'[{x}](https://pubmed.ncbi.nlm.nih.gov/{x}/)')
+            table = dash_table.DataTable(
+            columns=[{'name': col, 'id': col, 'presentation': 'markdown'} for col in df.columns],
+            data=df.to_dict('records'),
+            style_table={'width': '100%', 'height': '400px', 'overflowX': 'auto'},
+            style_header={'backgroundColor': 'grey', 'color': 'white', 'fontSize': 10, 'textAlign': 'center'},
+            style_cell={'textAlign': 'left', 'whiteSpace': 'normal', 'overflow': 'hidden',
+                        'textOverflow': 'ellipsis','maxWidth': '200px', 'maxHeight': '100px'},
+            style_data_conditional=[
+                    {'if': {'column_id': 'Title'}, 'width': '70%'},
+                    {'if': {'column_id': 'Annual citation rate'}, 'width': '10%', 'fontWeight': 'bold'},
+                    {'if': {'column_id': 'PMID'}, 'width': '10%'},
+                    {'if': {'column_id': 'Year'}, 'width': '10%',}],
+            style_data={'fontSize': 10}
+            )
+
+            if df.empty:
+                fig = empty_df_info()
+                return format_dccGraph(fig)
+            else:
+                return table
+
+        # Plot AACR
+        if dropdown == 'plot_aacr':
+            df = aacr_per_year_per_country(country_code, year_range)
+            fig = px.bar(df, x='Publication year', y='Average annual citation rate', orientation='v', template='plotly_white')
+            fig.update_traces(marker_color='grey', width=0.5)
+            fig.update_layout(bargap=0.2, hoverlabel=dict(font=dict(color='white')))
+            fig.update_xaxes(range=[year_range[0]-1, year_range[1]+0.5], title_font=dict(size=14),
+                             tickfont=dict(size=14), tickangle=0, ticks='outside', tickwidth=2.5, tickcolor='rgba(0, 0, 0, 0.1)',)
+            fig.update_yaxes(title_font=dict(size=14), tickfont=dict(size=14), gridcolor='rgba(0, 0, 0, 0.1)', gridwidth=1, griddash='solid')
+            if df.empty:
+                fig = empty_df_info()
+            return format_dccGraph(fig)
+
+        
+    return format_dccGraph(go.Figure(layout=go.Layout(
+        title=dict(text='Click on a country and select plot type', x=0.5, y=0.5, 
+                    xanchor='center', yanchor='top'),
+        template='plotly_white',
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False)
+    )))
+    
+
+#########################################
+### CALLBACKS FOR MAP ###
+#########################################
     
 @app.callback(Output('country-name', 'children'), Input('geojson', 'clickData'))
 def display_country_name(click_data):
