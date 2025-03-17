@@ -33,6 +33,7 @@ function(feature, context){
 #########################################
 
 def best_collabs(x):
+    x = dict(sorted(x.items(), key=lambda item: item[1], reverse=True))
     nmax = len(list(x.items()))
     if nmax >= 5:
         output = str(list(x.items())[0:5]).replace("'","").replace("[","").replace("]","").replace("]","")\
