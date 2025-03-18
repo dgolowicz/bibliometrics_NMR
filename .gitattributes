@@ -1,2 +1,0 @@
-data.db filter=lfs diff=lfs merge=lfs -text
-df_render.pkl filter=lfs diff=lfs merge=lfs -text
