@@ -1127,4 +1127,4 @@ def update_geojson_styles(click_data, year_range, dropdown, min_papers_input):
 #     return []
 
 if __name__ == '__main__':
-    app.run_server(host='0.0.0.0', port=8080, debug=True)
+    app.run_server(host='0.0.0.0', port=8080, debug=False)
