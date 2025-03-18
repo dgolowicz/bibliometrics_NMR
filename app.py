@@ -334,7 +334,7 @@ def avg_number_authors(year_range, min_records):
             'color': 'black',
             'weight': 1
         }
-    print(min_records)
+    #print(min_records)
     return styles, min_av_authors, max_av_authors, result_dict
 
 def avg_number_references(year_range, min_records):
@@ -402,7 +402,7 @@ def open_access_perc(year_range, min_records):
 
 
 # Path to the preloaded database
-DB_FILE = 'data.db'
+DB_FILE = '/var/data/data.db'
 
 # Load GeoJSON data (still needed)
 with open('./maps/world.geojson') as f:
