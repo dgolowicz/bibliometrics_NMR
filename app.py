@@ -362,7 +362,7 @@ def avg_number_references(year_range, min_records):
             'color': 'black',
             'weight': 1
         }
-    print(min_records)
+    #print(min_records)
     return styles, min_av_references, max_av_references, result_dict
 
 
