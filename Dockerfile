@@ -1,4 +1,3 @@
-# Use Python 3.12 as the base image
 FROM python:3.12
 
 # Set working directory
@@ -14,7 +13,7 @@ RUN pip install --upgrade pip
 COPY requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire project, including data.db
+# Copy the entire project
 COPY . .
 
 # Expose port 8080
