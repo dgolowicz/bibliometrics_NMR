@@ -216,11 +216,11 @@ def format_dccGraph(fig):
     
 
 def top_cited_papers(selected_country, year_range): 
-    query = "SELECT title_pubmed AS Title, cit_per_year_to2024 AS 'Annual citation rate', pmid as PMID, year_pubmed as 'Year'\
+    query = "SELECT title_pubmed AS Title, cit_per_year AS 'Annual citation rate', pmid as PMID, year_pubmed as 'Year'\
             FROM publications\
             WHERE majority_country = '{country}'\
             AND year_pubmed BETWEEN '{year_start}' AND '{year_end}'\
-            ORDER BY cit_per_year_to2024 DESC\
+            ORDER BY cit_per_year DESC\
             LIMIT 10\
             ".format(country=selected_country,
                      year_start=year_range[0],

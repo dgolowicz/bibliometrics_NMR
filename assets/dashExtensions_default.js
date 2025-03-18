@@ -9,7 +9,7 @@ window.dashExtensions = Object.assign({}, window.dashExtensions, {
             return {
                 color: 'black',
                 weight: 1,
-                fillOpacity: 0.1
+                fillOpacity: 0.05
             };
         }
 
